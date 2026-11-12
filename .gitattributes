@@ -1,0 +1,16 @@
+* text=auto
+
+# Scripts de shell precisam de LF, inclusive no Windows.
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+
+# PowerShell e arquivos do Windows usam CRLF.
+*.ps1 text eol=crlf
+
+# Binários
+*.ico binary
+*.png binary
+*.exe binary
