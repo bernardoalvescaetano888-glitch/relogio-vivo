@@ -1691,14 +1691,15 @@ IS_FROZEN = bool(getattr(sys, "frozen", False))
 
 
 def has_console() -> bool:
-    """True quando existe um terminal onde escrever (o build --windowed não tem)."""
-    if os.name == "nt":
-        try:
-            return bool(ctypes.windll.kernel32.GetConsoleWindow())
-        except Exception:  # noqa: BLE001
-            return False
+    """True quando existe uma saída padrão utilizável.
+
+    No build do Windows com --windowed, sys.stdout é None (não há console).
+    No Linux/macOS o binário continua imprimindo mesmo com pipe/redirecionamento,
+    por isso o critério é "existe e está aberto", não isatty().
+    """
     try:
-        return sys.stdout is not None and sys.stdout.isatty()
+        stream = sys.stdout
+        return stream is not None and not stream.closed
     except Exception:  # noqa: BLE001
         return False
 
