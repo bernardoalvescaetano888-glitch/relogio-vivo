@@ -134,6 +134,26 @@ automática está ativa.
 O PyInstaller **não faz compilação cruzada**: cada sistema gera o seu próprio
 binário. Por isso existem três scripts, um para cada plataforma.
 
+### Baixar pronto
+
+Todos os binários estão em `dist/` e publicados em
+<https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/tag/v1.0.0>.
+
+| Sistema | Arquivo | Observação |
+|---|---|---|
+| Windows 10/11 Intel ou AMD | `RelogioVivo-win-x64.exe` | **use este** na maioria dos PCs |
+| Windows ARM (Snapdragon) | `RelogioVivo-win-arm64.exe` | nativo, menor |
+| Ubuntu/Debian x86_64 | `RelogioVivo-linux-x64` | `chmod +x` antes de rodar |
+| Linux ARM64 | `RelogioVivo-linux-arm64` | Raspberry Pi, notebooks ARM |
+| macOS Apple Silicon | `RelogioVivo-macos-arm64.zip` | descompacte e abra o `.app` |
+| macOS Intel | `RelogioVivo-macos-x64.zip` | descompacte e abra o `.app` |
+
+No macOS, se o Gatekeeper bloquear:
+
+```bash
+xattr -dr com.apple.quarantine RelogioVivo.app
+```
+
 ### Windows (já gerado)
 
 `dist\RelogioVivo-win-x64.exe` e `dist\RelogioVivo-win-arm64.exe`.
