@@ -62,7 +62,7 @@ except Exception:  # Pillow sem Tk ou Tk ausente
 
 APP_NAME = "Relógio Vivo"
 APP_ID = "relogio-vivo"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 AUTOSTART_NAME = "RelogioVivo"
 AUTOSTART_LABEL = "com.relogiovivo.screensaver"
 
@@ -2078,6 +2078,14 @@ def run_check() -> int:
     print(f"Sistema: {platform.platform()}")
     print(f"Python: {sys.version.split()[0]}")
     print(f"Pillow: {getattr(Image, '__version__', 'não instalado')}")
+    if Image is not None:
+        if ImageTk is not None:
+            print("ImageTk: OK")
+        else:
+            print(
+                "ImageTk: FALTANDO — no Ubuntu/Debian: sudo apt install "
+                "python3-pil.imagetk"
+            )
 
     try:
         root = tk.Tk()
@@ -2254,10 +2262,20 @@ def main(argv=None) -> int:
         return 1
 
     if ImageTk is None:
-        print(
-            "O Pillow precisa ser instalado com suporte a Tkinter: "
-            "pip install pillow"
+        message = (
+            "O Pillow está instalado, mas sem o suporte a Tkinter (ImageTk).\n\n"
+            "Ubuntu/Debian:  sudo apt install python3-pil.imagetk\n"
+            "Fedora:         sudo dnf install python3-pillow-tk\n"
+            "Ou:             pip install --user --break-system-packages pillow\n\n"
+            "O instalador faz isso sozinho:\n"
+            "  curl -fsSL https://raw.githubusercontent.com/"
+            "bernardoalvescaetano888-glitch/relogio-vivo/main/instalar.sh | bash"
         )
+        print(message)
+        try:
+            notify(message)
+        except Exception:
+            pass
         return 1
 
     enable_dpi_awareness()

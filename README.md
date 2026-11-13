@@ -26,7 +26,36 @@ Se você aceitar, ele cria sozinho o arquivo de inicialização do sistema atual
 - Linux X11: opcionalmente `xprintidle` e `libxss1` para detectar inatividade
   sem depender do ambiente gráfico.
 
-## Instalar e executar
+## Instalação rápida no Linux (recomendado)
+
+Um comando instala **tudo** (Python, Tkinter, Pillow com ImageTk, grim no
+Wayland, xprintidle/libxss), cria o atalho no menu, o ícone, a inicialização
+automática e já deixa o app rodando em segundo plano:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bernardoalvescaetano888-glitch/relogio-vivo/main/instalar.sh | bash
+```
+
+Depois:
+
+```bash
+relogio-vivo            # abre as configurações
+relogio-vivo --test     # mostra o protetor agora
+relogio-vivo --check    # diagnóstico
+```
+
+Opções do instalador: `--no-autostart`, `--no-start`, `--from ARQUIVO`,
+`--uninstall`. Ele pergunta a senha do `sudo` uma vez e guarda todo o
+detalhamento em `/tmp/relogio-vivo-install.log`.
+
+Se você baixou o `.tar.gz` da release, também funciona offline:
+
+```bash
+tar -xzf RelogioVivo-linux-x64.tar.gz
+./instalar.sh --from relogio_vivo.py
+```
+
+## Instalar e executar (manual)
 
 ```bash
 cd relogio-vivo
@@ -128,6 +157,14 @@ automática está ativa.
 - **Quero ver a imagem sem abrir o protetor**:
   `python relogio_vivo.py --snapshot previa.png` (a prévia mostra o fundo e o
   cartão; a hora e a data são desenhadas ao vivo pelo Tkinter)
+- **Linux: "Permission denied"** ao rodar o binário baixado do GitHub: o
+  GitHub não guarda o bit de execução. Use o `.tar.gz` (já vem certo) ou
+  `chmod +x RelogioVivo-linux-x64`.
+- **Linux: "GLIBC_2.xx not found"**: o binário foi compilado numa versão mais
+  nova que a sua. Use o instalador (`curl ... | bash`), que roda com o Python
+  do seu sistema e não depende de glibc.
+- **Linux: "Pillow sem suporte a Tkinter"**: falta o `ImageTk`.
+  `sudo apt install python3-pil.imagetk` (o instalador já cuida disso).
 
 ## Executáveis
 
@@ -137,16 +174,23 @@ binário. Por isso existem três scripts, um para cada plataforma.
 ### Baixar pronto
 
 Todos os binários estão em `dist/` e publicados em
-<https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/tag/v1.0.0>.
+<https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/latest>.
+No Linux, prefira o **instalador** acima; o `.tar.gz` já vem com o bit de
+execução certo (o GitHub perde o `chmod +x` de arquivos soltos).
 
 | Sistema | Arquivo | Observação |
 |---|---|---|
 | Windows 10/11 Intel ou AMD | `RelogioVivo-win-x64.exe` | **use este** na maioria dos PCs |
 | Windows ARM (Snapdragon) | `RelogioVivo-win-arm64.exe` | nativo, menor |
-| Ubuntu/Debian x86_64 | `RelogioVivo-linux-x64` | `chmod +x` antes de rodar |
-| Linux ARM64 | `RelogioVivo-linux-arm64` | Raspberry Pi, notebooks ARM |
+| Ubuntu/Debian x86_64 | `RelogioVivo-linux-x64.tar.gz` | extraia e rode |
+| Linux ARM64 | `RelogioVivo-linux-arm64.tar.gz` | Raspberry Pi, notebooks ARM |
 | macOS Apple Silicon | `RelogioVivo-macos-arm64.zip` | descompacte e abra o `.app` |
 | macOS Intel | `RelogioVivo-macos-x64.zip` | descompacte e abra o `.app` |
+
+```bash
+tar -xzf RelogioVivo-linux-x64.tar.gz     # já sai executável
+./RelogioVivo-linux-x64
+```
 
 No macOS, se o Gatekeeper bloquear:
 
@@ -162,7 +206,7 @@ xattr -dr com.apple.quarantine RelogioVivo.app
   maioria dos casos. Também funciona em Windows ARM64, por emulação.
 - `-win-arm64` é nativo para Snapdragon/ARM (menor e mais rápido).
 
-Os dois já saem com ícone próprio e propriedades de versão (`1.0.0.0`), então
+Os dois já saem com ícone próprio e propriedades de versão (`1.1.0.0`), então
 o Explorer mostra "Relógio Vivo" em vez de "python".
 
 Para regerar:

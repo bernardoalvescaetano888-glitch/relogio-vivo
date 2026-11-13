@@ -60,10 +60,21 @@ jobs:
       - name: Compilar
         run: bash build_linux.sh
 
+      - name: Empacotar (preserva o chmod +x)
+        run: |
+          chmod +x dist/RelogioVivo-linux-*
+          cd dist
+          for f in RelogioVivo-linux-*; do
+            tar -czf "$f.tar.gz" "$f"
+          done
+          ls -lh
+
       - uses: actions/upload-artifact@v4
         with:
           name: RelogioVivo-linux-x64
-          path: dist/RelogioVivo-linux-*
+          path: |
+            dist/RelogioVivo-linux-*.tar.gz
+            dist/RelogioVivo-linux-x64
           if-no-files-found: error
 
   macos:
@@ -121,15 +132,20 @@ jobs:
     needs: [windows, linux, macos, macos-intel]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
           files: |
+            instalar.sh
             artifacts/RelogioVivo-win-x64/RelogioVivo-win-x64.exe
-            artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-*
+            artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-*.tar.gz
+            artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-x64
             artifacts/RelogioVivo-macos-arm64/RelogioVivo-macos-arm64.zip
             artifacts/RelogioVivo-macos-x64/RelogioVivo-macos-x64.zip
           fail_on_unmatched_files: false
