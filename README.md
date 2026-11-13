@@ -48,10 +48,17 @@ Opções do instalador: `--no-autostart`, `--no-start`, `--from ARQUIVO`,
 `--uninstall`. Ele pergunta a senha do `sudo` uma vez e guarda todo o
 detalhamento em `/tmp/relogio-vivo-install.log`.
 
-Se você baixou o `.tar.gz` da release, também funciona offline:
+Se você baixou o `.tar.gz` da release, ele já vem com o bit de execução:
 
 ```bash
 tar -xzf RelogioVivo-linux-x64.tar.gz
+./RelogioVivo-linux-x64
+```
+
+Quem clonou o repositório pode rodar o instalador apontando para o código
+local (assim ele também instala as dependências):
+
+```bash
 ./instalar.sh --from relogio_vivo.py
 ```
 
