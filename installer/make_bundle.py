@@ -221,12 +221,24 @@ def preparar_pasta(
 
 
 def zipar(pasta: Path, destino: Path) -> None:
-    with zipfile.ZipFile(
-        destino, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
-    ) as zf:
+    """Compacta a pasta gravando as permissões Unix corretas.
+
+    No Windows o sistema de arquivos não tem bit de execução, então copiar
+    ``instalar.sh`` de lá deixaria o script sem permissão de execução ao
+    extrair no Linux/macOS. Aqui o modo é gravado explicitamente.
+    """
+    with zipfile.ZipFile(destino, "w") as zf:
         for item in sorted(pasta.rglob("*")):
-            if item.is_file():
-                zf.write(item, item.relative_to(pasta).as_posix())
+            if not item.is_file():
+                continue
+            arcname = item.relative_to(pasta).as_posix()
+            info = zipfile.ZipInfo.from_file(item, arcname)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3  # Unix, para o modo abaixo ser respeitado
+            modo = 0o755 if item.suffix.lower() == ".sh" else 0o644
+            info.external_attr = (0o100000 | modo) << 16
+            with open(item, "rb") as fh:
+                zf.writestr(info, fh.read(), compresslevel=9)
 
 
 # --------------------------------------------------------------------- main
