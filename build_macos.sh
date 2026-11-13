@@ -68,6 +68,22 @@ python -m PyInstaller --noconfirm --windowed --onefile \
     --exclude-module tkinter.test \
     relogio_vivo.py
 
+# O PyInstaller cria o Info.plist com versão 0.0.0. Ajusta para a versão real,
+# que aparece no Finder ("Obter informações") e na janela Sobre do app.
+APP_PLIST="dist/$TARGET.app/Contents/Info.plist"
+APP_VERSION="$(python3 -c '
+import re, pathlib
+texto = pathlib.Path("relogio_vivo.py").read_text(encoding="utf-8")
+print(re.search(r"APP_VERSION = \"([^\"]+)\"", texto).group(1))
+')"
+if [ -f "$APP_PLIST" ]; then
+    for chave in CFBundleShortVersionString CFBundleVersion; do
+        /usr/libexec/PlistBuddy -c "Set :$chave $APP_VERSION" "$APP_PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :$chave string $APP_VERSION" "$APP_PLIST"
+    done
+    echo "Versão do bundle: $APP_VERSION"
+fi
+
 echo
 echo "Gerado: dist/$TARGET.app ($SUFFIX)"
 echo
