@@ -16,6 +16,18 @@ Se você aceitar, ele cria sozinho o arquivo de inicialização do sistema atual
 
 ## Instaladores completos (recomendado)
 
+### Baixar em um ZIP só
+
+Na página da release há dois pacotes prontos:
+
+| ZIP | Conteúdo |
+|---|---|
+| `RelogioVivo-<versao>-setup.zip` | pasta `setup/` com os instaladores de Windows, Linux e macOS + `LEIA-ME.txt` |
+| `RelogioVivo-<versao>-portatil.zip` | pasta `portatil/` com as versões sem instalação dos três sistemas |
+
+Depois de extrair, é só abrir a pasta do seu sistema. Os arquivos individuais
+continuam disponíveis na release para quem preferir baixar só um.
+
 Cada sistema tem um instalador próprio que cria atalho, ícone, entrada no menu
 e desinstalador — sem precisar de Python nem de terminal.
 
