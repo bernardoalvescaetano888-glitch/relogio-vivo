@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   windows:
-    name: Windows x64
+    name: Windows x64 (exe + instalador)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,14 +40,66 @@ jobs:
           --exclude-module pdb --exclude-module tkinter.test
           relogio_vivo.py
 
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Gerar instalador .exe
+        shell: pwsh
+        run: ./installer/windows/build_setup.ps1 -Arch x64
+
       - uses: actions/upload-artifact@v4
         with:
           name: RelogioVivo-win-x64
-          path: dist/RelogioVivo-win-x64.exe
+          path: |
+            dist/RelogioVivo-win-x64.exe
+            dist/RelogioVivo-Setup-*-win-x64.exe
+          if-no-files-found: error
+
+  windows-arm64:
+    name: Windows ARM64 (exe + instalador)
+    runs-on: windows-11-arm
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: python -m pip install --upgrade pyinstaller "Pillow>=10.0"
+
+      - name: Compilar
+        run: >
+          python -m PyInstaller --noconfirm --windowed --onefile
+          --name RelogioVivo-win-arm64
+          --icon assets/icon.ico
+          --version-file assets/version_info.txt
+          --exclude-module numpy --exclude-module pygame
+          --exclude-module psutil --exclude-module setuptools
+          --exclude-module pip --exclude-module pytest
+          --exclude-module unittest --exclude-module pydoc
+          --exclude-module doctest --exclude-module lib2to3
+          --exclude-module pdb --exclude-module tkinter.test
+          relogio_vivo.py
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Gerar instalador .exe
+        shell: pwsh
+        run: ./installer/windows/build_setup.ps1 -Arch arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RelogioVivo-win-arm64
+          path: |
+            dist/RelogioVivo-win-arm64.exe
+            dist/RelogioVivo-Setup-*-win-arm64.exe
           if-no-files-found: error
 
   linux:
-    name: Linux x64
+    name: Linux x64 (binário + .tar.gz + .deb)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +107,7 @@ jobs:
       - name: Instalar Python, Tk e dependências de build
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3 python3-venv python3-tk
+          sudo apt-get install -y python3 python3-venv python3-tk python3-pil imagemagick
 
       - name: Compilar
         run: bash build_linux.sh
@@ -69,16 +121,20 @@ jobs:
           done
           ls -lh
 
+      - name: Gerar pacote .deb
+        run: bash installer/linux/build_deb.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: RelogioVivo-linux-x64
           path: |
             dist/RelogioVivo-linux-*.tar.gz
             dist/RelogioVivo-linux-x64
+            dist/relogio-vivo_*_all.deb
           if-no-files-found: error
 
   macos:
-    name: macOS (arm64)
+    name: macOS arm64 (app + .pkg)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,14 +151,19 @@ jobs:
           cd dist
           ditto -c -k --sequesterRsrc --keepParent RelogioVivo.app RelogioVivo-macos-arm64.zip
 
+      - name: Gerar instalador .pkg
+        run: bash installer/macos/build_pkg.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: RelogioVivo-macos-arm64
-          path: dist/RelogioVivo-macos-arm64.zip
+          path: |
+            dist/RelogioVivo-macos-arm64.zip
+            dist/RelogioVivo-Setup-*-macos-arm64.pkg
           if-no-files-found: error
 
   macos-intel:
-    name: macOS (Intel)
+    name: macOS Intel (app + .pkg)
     runs-on: macos-15-intel
     continue-on-error: true
     steps:
@@ -120,16 +181,21 @@ jobs:
           cd dist
           ditto -c -k --sequesterRsrc --keepParent RelogioVivo.app RelogioVivo-macos-x64.zip
 
+      - name: Gerar instalador .pkg
+        run: bash installer/macos/build_pkg.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: RelogioVivo-macos-x64
-          path: dist/RelogioVivo-macos-x64.zip
+          path: |
+            dist/RelogioVivo-macos-x64.zip
+            dist/RelogioVivo-Setup-*-macos-x64.pkg
           if-no-files-found: error
 
   release:
     name: Publicar na release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [windows, linux, macos, macos-intel]
+    needs: [windows, windows-arm64, linux, macos, macos-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -143,7 +209,11 @@ jobs:
           generate_release_notes: true
           files: |
             instalar.sh
+            artifacts/**/RelogioVivo-Setup-*.exe
+            artifacts/**/RelogioVivo-Setup-*.pkg
+            artifacts/**/relogio-vivo_*_all.deb
             artifacts/RelogioVivo-win-x64/RelogioVivo-win-x64.exe
+            artifacts/RelogioVivo-win-arm64/RelogioVivo-win-arm64.exe
             artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-*.tar.gz
             artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-x64
             artifacts/RelogioVivo-macos-arm64/RelogioVivo-macos-arm64.zip

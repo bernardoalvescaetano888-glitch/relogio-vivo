@@ -32,12 +32,16 @@ $excludes = @(
 )
 
 function Get-ArchLabel([string]$Interpreter) {
-    $machine = & $Interpreter -c "import platform; print(platform.machine())"
-    switch ($machine.Trim().ToUpperInvariant()) {
-        "AMD64" { return "x64" }
-        "ARM64" { return "arm64" }
-        "X86" { return "x86" }
-        default { return $machine.Trim().ToLowerInvariant() }
+    # sysconfig.get_platform() reflete a arquitetura do PROCESSO. No Windows
+    # ARM, platform.machine() devolve "ARM64" até para o Python x64 emulado,
+    # o que já fez o build x64 ser salvo com o nome errado.
+    $plat = & $Interpreter -c "import sysconfig; print(sysconfig.get_platform())"
+    $plat = $plat.Trim().ToLowerInvariant()
+    switch -Regex ($plat) {
+        "arm64" { return "arm64" }
+        "amd64|x64" { return "x64" }
+        "win32|x86" { return "x86" }
+        default { return $plat }
     }
 }
 
@@ -71,6 +75,10 @@ foreach ($interpreter in $interpreters) {
     if (-not (Test-Path $interpreter)) { continue }
     $arch = Get-ArchLabel $interpreter
     $target = "$Name-win-$arch"
+    if ($built -match "\\$target\.exe$") {
+        Write-Host "==> Pulando ${target}: essa arquitetura já foi compilada"
+        continue
+    }
     Write-Host ""
     Write-Host "==> Compilando $target com $interpreter"
 

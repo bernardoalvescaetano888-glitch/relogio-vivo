@@ -9,6 +9,7 @@
 
 # PowerShell e arquivos do Windows usam CRLF.
 *.ps1 text eol=crlf
+*.iss text eol=crlf
 
 # Binários
 *.ico binary

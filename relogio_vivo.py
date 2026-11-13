@@ -62,7 +62,7 @@ except Exception:  # Pillow sem Tk ou Tk ausente
 
 APP_NAME = "Relógio Vivo"
 APP_ID = "relogio-vivo"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 AUTOSTART_NAME = "RelogioVivo"
 AUTOSTART_LABEL = "com.relogiovivo.screensaver"
 

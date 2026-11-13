@@ -14,6 +14,66 @@ Na primeira execução ele **pede permissão** para iniciar junto com o computad
 Se você aceitar, ele cria sozinho o arquivo de inicialização do sistema atual
 (Registro do Windows, `.desktop` no Linux ou LaunchAgent no macOS).
 
+## Instaladores completos (recomendado)
+
+Cada sistema tem um instalador próprio que cria atalho, ícone, entrada no menu
+e desinstalador — sem precisar de Python nem de terminal.
+
+| Sistema | Arquivo | O que faz |
+|---|---|---|
+| Windows 10/11 Intel/AMD | `RelogioVivo-Setup-1.2.0-win-x64.exe` | instala, cria atalhos no Menu Iniciar e na Área de Trabalho, ativa o autostart e registra o desinstalador |
+| Windows ARM (Snapdragon) | `RelogioVivo-Setup-1.2.0-win-arm64.exe` | idem, nativo para ARM |
+| Debian/Ubuntu/Mint/Pop!_OS | `relogio-vivo_1.2.0_all.deb` | instala comando, menu, ícone e dependências pelo `apt` |
+| macOS Apple Silicon | `RelogioVivo-Setup-1.2.0-macos-arm64.pkg` | instala em `/Applications` |
+| macOS Intel | `RelogioVivo-Setup-1.2.0-macos-x64.pkg` | instala em `/Applications` |
+
+### Windows
+
+Baixe o `.exe` do Setup e abra. Ele **não pede administrador**: instala em
+`%LOCALAPPDATA%\Programs\Relogio Vivo` e cria os atalhos para o seu usuário.
+Na tela de tarefas você escolhe:
+
+- atalho na Área de Trabalho;
+- iniciar junto com o Windows;
+- abrir o app ao terminar.
+
+Para desinstalar: **Configurações → Aplicativos → Relógio Vivo → Desinstalar**
+(ou o atalho "Desinstalar o Relógio Vivo" no Menu Iniciar).
+
+Instalação silenciosa, útil em script:
+
+```powershell
+.\RelogioVivo-Setup-1.2.0-win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+```
+
+### Debian / Ubuntu
+
+```bash
+sudo apt install ./relogio-vivo_1.2.0_all.deb
+```
+
+O `apt` resolve sozinho `python3`, `python3-tk` e `python3-pil.imagetk`. O
+comando `relogio-vivo` fica disponível no terminal e o atalho no menu de
+aplicativos. Se você instalou com `sudo`, a inicialização automática também é
+ativada para o seu usuário.
+
+```bash
+relogio-vivo --test
+sudo apt remove relogio-vivo
+```
+
+### macOS
+
+Abra o `.pkg` com dois cliques. Se o Gatekeeper reclamar (o pacote não é
+assinado), clique com o botão direito → **Abrir**, ou:
+
+```bash
+xattr -dr com.apple.quarantine RelogioVivo-Setup-1.2.0-macos-arm64.pkg
+```
+
+O app vai para `/Applications`. Na primeira execução ele pergunta se pode
+iniciar junto com o sistema e pede a permissão de **Gravação de Tela**.
+
 ## Requisitos
 
 - Python 3.9 ou mais novo (testado com 3.14).
@@ -26,7 +86,7 @@ Se você aceitar, ele cria sozinho o arquivo de inicialização do sistema atual
 - Linux X11: opcionalmente `xprintidle` e `libxss1` para detectar inatividade
   sem depender do ambiente gráfico.
 
-## Instalação rápida no Linux (recomendado)
+## Linux: instalação em um comando (sem pacote)
 
 Um comando instala **tudo** (Python, Tkinter, Pillow com ImageTk, grim no
 Wayland, xprintidle/libxss), cria o atalho no menu, o ícone, a inicialização
@@ -187,12 +247,15 @@ execução certo (o GitHub perde o `chmod +x` de arquivos soltos).
 
 | Sistema | Arquivo | Observação |
 |---|---|---|
-| Windows 10/11 Intel ou AMD | `RelogioVivo-win-x64.exe` | **use este** na maioria dos PCs |
-| Windows ARM (Snapdragon) | `RelogioVivo-win-arm64.exe` | nativo, menor |
-| Ubuntu/Debian x86_64 | `RelogioVivo-linux-x64.tar.gz` | extraia e rode |
+| Windows 10/11 Intel ou AMD | `RelogioVivo-Setup-*-win-x64.exe` | **instalador completo** |
+| Windows ARM (Snapdragon) | `RelogioVivo-Setup-*-win-arm64.exe` | instalador nativo |
+| Windows (portátil) | `RelogioVivo-win-x64.exe` / `-win-arm64.exe` | sem instalar nada |
+| Debian/Ubuntu | `relogio-vivo_*_all.deb` | instalador completo |
+| Ubuntu/Debian x86_64 | `RelogioVivo-linux-x64.tar.gz` | binário portátil |
 | Linux ARM64 | `RelogioVivo-linux-arm64.tar.gz` | Raspberry Pi, notebooks ARM |
-| macOS Apple Silicon | `RelogioVivo-macos-arm64.zip` | descompacte e abra o `.app` |
-| macOS Intel | `RelogioVivo-macos-x64.zip` | descompacte e abra o `.app` |
+| macOS Apple Silicon | `RelogioVivo-Setup-*-macos-arm64.pkg` | instalador completo |
+| macOS Intel | `RelogioVivo-Setup-*-macos-x64.pkg` | instalador completo |
+| macOS (portátil) | `RelogioVivo-macos-arm64.zip` / `-x64.zip` | `.app` solto |
 
 ```bash
 tar -xzf RelogioVivo-linux-x64.tar.gz     # já sai executável
@@ -213,14 +276,27 @@ xattr -dr com.apple.quarantine RelogioVivo.app
   maioria dos casos. Também funciona em Windows ARM64, por emulação.
 - `-win-arm64` é nativo para Snapdragon/ARM (menor e mais rápido).
 
-Os dois já saem com ícone próprio e propriedades de versão (`1.1.0.0`), então
+Os dois já saem com ícone próprio e propriedades de versão (`1.2.0.0`), então
 o Explorer mostra "Relógio Vivo" em vez de "python".
 
-Para regerar:
+Para regerar os portáteis:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build_windows.ps1
 ```
+
+### Windows: gerar o instalador
+
+Depois de compilar os `.exe`, com o **Inno Setup 6.3+** instalado
+(`winget install JRSoftware.InnoSetup`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\windows\build_setup.ps1
+```
+
+Gera `dist\RelogioVivo-Setup-<versao>-win-x64.exe` e `-win-arm64.exe`. O
+script do Inno fica em `installer/windows/relogio-vivo.iss` e pode ser aberto
+na interface do Inno Setup para editar textos e comportamentos.
 
 ### Linux (rodar no Linux)
 
@@ -238,6 +314,34 @@ O `dist/RelogioVivo-linux-arm64` incluído foi compilado num Ubuntu ARM64
 Para Ubuntu/Debian x86_64 comum, rode `build_linux.sh` num Linux x64 ou use
 o workflow do GitHub.
 
+### Linux: gerar o pacote .deb
+
+Em qualquer Debian/Ubuntu, com `dpkg-deb` (já vem no sistema):
+
+```bash
+bash installer/linux/build_deb.sh
+# dist/relogio-vivo_<versao>_all.deb
+
+sudo apt install ./dist/relogio-vivo_*.deb
+```
+
+O pacote é `Architecture: all` (só arquivos Python + ícone + `.desktop`) e
+declara as dependências `python3`, `python3-tk` e `python3-pil.imagetk`, então
+o `apt` instala tudo sozinho. Ao remover com `apt remove relogio-vivo`, os
+arquivos do sistema somem e as configurações do usuário são mantidas.
+
+### macOS: gerar o instalador .pkg
+
+```bash
+./build_macos.sh                    # gera dist/RelogioVivo.app
+bash installer/macos/build_pkg.sh   # gera o .pkg
+bash installer/macos/build_pkg.sh --dmg   # gera também um .dmg
+```
+
+O `.pkg` instala em `/Applications`. Ele não é assinado (seria preciso uma
+conta Apple Developer), então o primeiro clique deve ser com o botão direito →
+**Abrir**.
+
 ### macOS (rodar no Mac)
 
 ```bash
@@ -254,22 +358,26 @@ xattr -dr com.apple.quarantine dist/RelogioVivo.app
 
 ### Gerar os três sem ter Linux/Mac: GitHub Actions
 
-O workflow `.github/workflows/build.yml` compila Windows x64, Linux x64 e
-macOS (arm64 e Intel) em máquinas nativas e sobe os binários como artefatos.
+O workflow `.github/workflows/build.yml` compila Windows (x64 e ARM64), Linux
+x64 e macOS (arm64 e Intel) em máquinas nativas, gera **os instaladores**
+(`.exe`, `.deb` e `.pkg`) e sobe tudo como artefatos. Numa tag, publica
+automaticamente na release.
 
 1. Suba a pasta para um repositório no GitHub.
 2. Aba **Actions → Gerar executáveis → Run workflow**.
 3. Baixe os artefatos ao final, ou crie uma tag para publicar na release:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 ### Depois de gerar
 
-Abra o executável uma vez e ative a inicialização automática pela janela. O
-comando de autostart aponta para o executável quando o app está empacotado.
+Com os instaladores, o autostart e os atalhos já ficam prontos. Nos binários
+portáteis, abra o executável uma vez e ative a inicialização automática pela
+janela (o comando de autostart aponta para o executável quando o app está
+empacotado).
 
 ### Linha de comando no executável
 
