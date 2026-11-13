@@ -156,13 +156,37 @@ extra_packages() {
     esac
 }
 
-wayland_tools() {
+capture_packages() {
+    # gdbus (GNOME Shell/D-Bus) + capturador + notify-send (avisos).
     case "$1" in
-        apt) echo "grim" ;;
-        dnf) echo "grim" ;;
-        pacman) echo "grim" ;;
-        zypper) echo "grim" ;;
+        apt) echo "libglib2.0-bin gnome-screenshot libnotify-bin" ;;
+        dnf) echo "glib2 gnome-screenshot libnotify" ;;
+        pacman) echo "glib2 gnome-screenshot libnotify" ;;
+        zypper) echo "glib2-tools gnome-screenshot libnotify-tools" ;;
     esac
+}
+
+optional_tools() {
+    # Alternativas de captura; se alguma não existir, seguimos sem ela.
+    case "$1" in
+        apt) echo "grim imagemagick scrot" ;;
+        dnf) echo "grim ImageMagick scrot" ;;
+        pacman) echo "grim imagemagick scrot" ;;
+        zypper) echo "grim imagemagick scrot" ;;
+    esac
+}
+
+pkg_install_each() { # pkg_install_each PM PACOTES...
+    local pm="$1"; shift
+    local pkg
+    for pkg in "$@"; do
+        [ -n "$pkg" ] || continue
+        if pkg_install "$pm" "$pkg" >>"$LOG" 2>&1; then
+            :
+        else
+            warn "não instalei $pkg (opcional); seguindo sem ele"
+        fi
+    done
 }
 
 # ---------------------------------------------------------------- argumentos
@@ -236,10 +260,23 @@ fi
 # shellcheck disable=SC2046
 pkg_install "$PM" $(extra_packages "$PM") >>"$LOG" 2>&1 || true
 
+# Captura de tela e avisos: instalados um a um para que um pacote ausente
+# na distro não impeça o restante (é o que garante o "funciona direto").
+# shellcheck disable=SC2046
+pkg_install_each "$PM" $(capture_packages "$PM")
+# shellcheck disable=SC2046
+pkg_install_each "$PM" $(optional_tools "$PM")
+
 if [ "$SESSION" = "wayland" ]; then
-    # shellcheck disable=SC2046
-    pkg_install "$PM" $(wayland_tools "$PM") >>"$LOG" 2>&1 \
-        || warn "não instalei o grim; a captura no Wayland pode falhar"
+    ok "sessão Wayland: usando GNOME Shell (D-Bus) e alternativas"
+else
+    ok "sessão X11: captura pela própria janela/X11"
+fi
+
+if have notify-send; then
+    ok "avisos do sistema disponíveis (notify-send)"
+else
+    warn "sem notify-send; erros aparecem só no log"
 fi
 
 if ! have python3; then

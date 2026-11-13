@@ -14,7 +14,7 @@
 ; Ou simplesmente: powershell -ExecutionPolicy Bypass -File installer\windows\build_setup.ps1
 
 #ifndef AppVersion
-  #define AppVersion "1.3.0"
+  #define AppVersion "1.3.1"
 #endif
 
 #ifndef Arch

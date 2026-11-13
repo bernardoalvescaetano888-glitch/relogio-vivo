@@ -14,9 +14,10 @@
 #   /usr/share/icons/hicolor/256x256/apps/relogio-vivo.png   ícone
 #
 # Dependências resolvidas automaticamente pelo apt:
-#   python3, python3-tk, python3-pil.imagetk
+#   python3, python3-tk, python3-pil.imagetk, libglib2.0-bin (gdbus)
 # Recomendadas:
-#   xprintidle, libxss1 (detecção de inatividade no X11), grim (Wayland)
+#   gnome-screenshot, grim, imagemagick (captura no Wayland/X11),
+#   xprintidle, libxss1 (detecção de inatividade), libnotify-bin (avisos)
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -157,8 +158,8 @@ Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: all
-Depends: python3 (>= 3.9), python3-tk, python3-pil.imagetk
-Recommends: xprintidle, libxss1, grim
+Depends: python3 (>= 3.9), python3-tk, python3-pil.imagetk, libglib2.0-bin
+Recommends: gnome-screenshot, grim, imagemagick, scrot, xprintidle, libxss1, libnotify-bin
 Installed-Size: $TAMANHO
 Maintainer: Relógio Vivo <bernardoalvescaetano888-glitch@users.noreply.github.com>
 Homepage: https://github.com/bernardoalvescaetano888-glitch/relogio-vivo

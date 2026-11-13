@@ -42,9 +42,10 @@ powershell -ExecutionPolicy Bypass -File installer\windows\build_setup.ps1
 
 - `Architecture: all` (só Python + ícone + `.desktop`), funciona em x86_64,
   ARM64 e qualquer outra.
-- `Depends: python3, python3-tk, python3-pil.imagetk` — o `apt` instala tudo.
-- `Recommends: xprintidle, libxss1, grim` (detecção de inatividade e captura
-  no Wayland).
+- `Depends: python3, python3-tk, python3-pil.imagetk, libglib2.0-bin` — o
+  `apt` instala tudo (o `gdbus` é usado para capturar no GNOME/Wayland).
+- `Recommends: gnome-screenshot, grim, imagemagick, scrot, xprintidle,
+  libxss1, libnotify-bin` (captura, inatividade e avisos).
 - Instala `/usr/bin/relogio-vivo`, o app em `/usr/share/relogio-vivo`, o
   atalho e o ícone.
 - No `postinst`, ativa a inicialização automática para o usuário que rodou
@@ -109,5 +110,5 @@ O job `windows-arm64` usa o runner `windows-11-arm`; o Linux ARM64 usa
 `make_bundle.py` localmente com os binários faltantes e reenvie:
 
 ```bash
-gh release upload v1.3.0 dist/install.zip dist/portatil.zip --clobber
+gh release upload v1.3.1 dist/install.zip dist/portatil.zip --clobber
 ```

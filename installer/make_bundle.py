@@ -11,7 +11,7 @@ com nome por versão.
 
 Uso:
     python3 installer/make_bundle.py
-    python3 installer/make_bundle.py --version 1.3.0 --out dist
+    python3 installer/make_bundle.py --version 1.3.1 --out dist
 """
 
 from __future__ import annotations

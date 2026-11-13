@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from dataclasses import dataclass
@@ -66,7 +67,7 @@ except Exception:  # Pillow sem Tk ou Tk ausente
 
 APP_NAME = "Relógio Vivo"
 APP_ID = "relogio-vivo"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 AUTOSTART_NAME = "RelogioVivo"
 AUTOSTART_LABEL = "com.relogiovivo.screensaver"
 
@@ -603,29 +604,34 @@ class CaptureError(RuntimeError):
     pass
 
 
+# Cada comando externo tem um limite curto. Se um deles travar (portal,
+# diálogo de permissão etc.), o app desiste e usa o próximo método.
+CAPTURE_TOOL_TIMEOUT = 8
+# Limite total para a interface: passou disso, mostra só o relógio.
+CAPTURE_UI_TIMEOUT = 10
+
+
+def _gnome_dbus_available() -> bool:
+    if os.name == "nt" or sys.platform == "darwin":
+        return False
+    if not shutil.which("gdbus"):
+        return False
+    desktop = (
+        os.environ.get("XDG_CURRENT_DESKTOP")
+        or os.environ.get("DESKTOP_SESSION")
+        or ""
+    ).lower()
+    if "gnome" in desktop or "ubuntu" in desktop:
+        return True
+    return os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+
+
 def available_capture_backends() -> list[str]:
-    if os.name == "nt":
-        return ["Pillow ImageGrab"]
-    if sys.platform == "darwin":
-        return ["screencapture", "Pillow ImageGrab"]
-    backends = []
-    wayland = os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
-    if not wayland:
-        backends.append("Pillow ImageGrab (X11)")
-    for tool in (
-        "grim",
-        "gnome-screenshot",
-        "spectacle",
-        "scrot",
-        "maim",
-        "import",
-        "xfce4-screenshooter",
-    ):
-        if shutil.which(tool):
-            backends.append(tool)
-    if wayland:
-        backends.append("Pillow ImageGrab (XWayland)")
-    return backends
+    """Lista os métodos de captura na mesma ordem em que serão tentados."""
+    try:
+        return [name for name, _ in _capture_candidates(None)]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def capture_screen(region: tuple[int, int, int, int] | None = None):
@@ -637,15 +643,53 @@ def capture_screen(region: tuple[int, int, int, int] | None = None):
     for name, fn in _capture_candidates(region):
         try:
             image = fn()
+            return _validar_captura(image)
         except Exception as exc:  # noqa: BLE001 - queremos tentar o próximo
             errors.append(f"{name}: {exc}")
+            log(f"Captura: {name} falhou: {exc}")
             continue
-        if image is not None:
-            if image.mode != "RGB":
-                image = image.convert("RGB")
-            return image
     detail = " | ".join(errors) if errors else "nenhum método disponível"
     raise CaptureError(detail)
+
+
+def _validar_captura(image):
+    if image is None:
+        raise RuntimeError("imagem vazia")
+    if image.width < 10 or image.height < 10:
+        raise RuntimeError(f"imagem pequena demais ({image.width}x{image.height})")
+    if image.mode != "RGB":
+        image = image.convert("RGB")
+    # Captura 100% preta costuma ser falha do XWayland/sem permissão.
+    if image.getbbox() is None:
+        raise RuntimeError("captura saiu toda preta (falta permissão?)")
+    return image
+
+
+def _bounded_call(fn, seconds: float, rotulo: str):
+    """Executa fn() numa thread e desiste depois de `seconds`.
+
+    Serve para bibliotecas que não aceitam timeout (caso do ImageGrab no
+    Linux, que pode chamar um comando externo e travar).
+    """
+    resultado: dict[str, object] = {}
+
+    def worker() -> None:
+        try:
+            resultado["valor"] = fn()
+        except BaseException as exc:  # noqa: BLE001
+            resultado["erro"] = exc
+
+    thread = threading.Thread(target=worker, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    if thread.is_alive():
+        raise RuntimeError(f"{rotulo} demorou mais de {seconds:.0f}s")
+    if "erro" in resultado:
+        erro = resultado["erro"]
+        if isinstance(erro, Exception):
+            raise erro
+        raise RuntimeError(str(erro))
+    return resultado.get("valor")
 
 
 def _capture_candidates(region):
@@ -666,26 +710,40 @@ def _capture_candidates(region):
         ("scrot", lambda path: ["scrot", path]),
         ("maim", lambda path: ["maim", path]),
         ("import", lambda path: ["import", "-window", "root", path]),
-        ("xfce4-screenshooter", lambda path: ["xfce4-screenshooter", "-f", "-s", path]),
+        (
+            "xfce4-screenshooter",
+            lambda path: ["xfce4-screenshooter", "-f", "-s", path],
+        ),
     ]
 
     def tool_candidate(name, builder):
         if not shutil.which(name):
             return None
-        return lambda: _grab_tool(builder)
+        return lambda: _grab_tool(builder, name)
 
     if wayland:
+        # No GNOME/Wayland o grim não funciona; o caminho certo é o D-Bus do
+        # GNOME Shell (sem diálogo) e, depois, ferramentas do ambiente.
+        if _gnome_dbus_available():
+            yield "GNOME Shell (D-Bus)", _grab_gnome_dbus
         for name, builder in tools:
             candidate = tool_candidate(name, builder)
             if candidate:
                 yield name, candidate
-        yield "Pillow (XWayland)", _grab_pillow
+        # XWayland costuma sair preto; fica como último recurso.
+        yield "Pillow (XWayland)", _grab_pillow_seguro
     else:
-        yield "Pillow (X11)", _grab_pillow
+        yield "Pillow (X11)", _grab_pillow_seguro
+        if _gnome_dbus_available():
+            yield "GNOME Shell (D-Bus)", _grab_gnome_dbus
         for name, builder in tools:
             candidate = tool_candidate(name, builder)
             if candidate:
                 yield name, candidate
+
+
+def _grab_pillow_seguro():
+    return _bounded_call(_grab_pillow, CAPTURE_TOOL_TIMEOUT, "ImageGrab")
 
 
 def _grab_pillow():
@@ -698,6 +756,41 @@ def _grab_pillow():
     return image
 
 
+def _grab_gnome_dbus():
+    """Captura no GNOME (X11 ou Wayland) pela API D-Bus do Shell."""
+    with tempfile.TemporaryDirectory(prefix="relogio-vivo-") as tmp:
+        path = os.path.join(tmp, "capture.png")
+        cmd = [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnome.Shell",
+            "--object-path",
+            "/org/gnome/Shell/Screenshot",
+            "--method",
+            "org.gnome.Shell.Screenshot.Screenshot",
+            "false",
+            "false",
+            path,
+        ]
+        out = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=CAPTURE_TOOL_TIMEOUT,
+            check=False,
+        )
+        if not os.path.exists(path) or os.path.getsize(path) == 0:
+            detalhe = (out.stderr or out.stdout or "").strip()[:200]
+            raise RuntimeError(f"GNOME não gerou imagem ({detalhe})")
+        with Image.open(path) as image:
+            image.load()
+            return image.convert("RGB")
+
+
 def _grab_tool_macos(region):
     with tempfile.TemporaryDirectory(prefix="relogio-vivo-") as tmp:
         path = os.path.join(tmp, "capture.png")
@@ -706,7 +799,9 @@ def _grab_tool_macos(region):
             x, y, w, h = region
             cmd += ["-R", f"{x},{y},{w},{h}"]
         cmd.append(path)
-        subprocess.run(cmd, capture_output=True, timeout=20, check=False)
+        subprocess.run(
+            cmd, capture_output=True, timeout=CAPTURE_TOOL_TIMEOUT, check=False
+        )
         if not os.path.exists(path) or os.path.getsize(path) == 0:
             raise RuntimeError(
                 "screencapture não gerou imagem (permissão de Gravação de Tela?)"
@@ -716,12 +811,21 @@ def _grab_tool_macos(region):
             return image.convert("RGB")
 
 
-def _grab_tool(builder):
+def _grab_tool(builder, nome="ferramenta"):
     with tempfile.TemporaryDirectory(prefix="relogio-vivo-") as tmp:
         path = os.path.join(tmp, "capture.png")
-        subprocess.run(builder(path), capture_output=True, timeout=20, check=False)
+        out = subprocess.run(
+            builder(path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=CAPTURE_TOOL_TIMEOUT,
+            check=False,
+        )
         if not os.path.exists(path) or os.path.getsize(path) == 0:
-            raise RuntimeError("o comando não gerou imagem")
+            detalhe = (out.stderr or out.stdout or "").strip()[:200]
+            raise RuntimeError(f"{nome} não gerou imagem ({detalhe})")
         with Image.open(path) as image:
             image.load()
             return image.convert("RGB")
@@ -1599,6 +1703,12 @@ class SettingsWindow:
                 "Captura a tela e abre o protetor com a prévia desfocada. "
                 "Mova o mouse ou pressione qualquer tecla para sair."
             )
+            if not available_capture_backends():
+                text += (
+                    "\nNenhum método de captura encontrado. Rode de novo o "
+                    "instalador (ele instala o que falta) ou escolha "
+                    "“Só o relógio”."
+                )
         self.test_help.configure(text=text)
 
     def _build_idle_card(self, parent) -> None:
@@ -1945,6 +2055,37 @@ def notify(message: str) -> None:
         print(message)
 
 
+def desktop_notify(title: str, message: str) -> None:
+    """Aviso não bloqueante: nunca trava a interface do app.
+
+    No Linux usa notify-send; nos outros sistemas (e se ele não existir)
+    apenas registra no log e no console.
+    """
+    if sys.platform.startswith("linux") and shutil.which("notify-send"):
+        try:
+            subprocess.Popen(
+                [
+                    "notify-send",
+                    "--app-name",
+                    APP_NAME,
+                    "--icon",
+                    "dialog-warning",
+                    "--expire-time",
+                    "15000",
+                    title,
+                    message,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+        except OSError:
+            pass
+    log(f"{title}: {message}")
+    if has_console():
+        print(f"{title}: {message}")
+
+
 IS_FROZEN = bool(getattr(sys, "frozen", False))
 
 
@@ -2107,6 +2248,8 @@ class RelogioVivo:
         self._suppress_until = 0.0
         self._capture_block_until = 0.0
         self._capture_warned = False
+        self._capture_token = 0
+        self._capture_result: dict[str, object] | None = None
         self._tick_count = 0
         self._after_id = None
 
@@ -2222,7 +2365,9 @@ class RelogioVivo:
             return
         if not force:
             now = time.monotonic()
-            if now < self._suppress_until or now < self._capture_block_until:
+            if now < self._suppress_until:
+                return
+            if self.cfg.mode == MODE_TELA and now < self._capture_block_until:
                 return
             if self.last_idle is None or self.last_idle < self.cfg.idle_minutes * 60:
                 return
@@ -2234,22 +2379,15 @@ class RelogioVivo:
         self.root.after(320, self._present_saver)
 
     def _present_saver(self) -> None:
-        self._preparing = False
         if self._shutting_down:
             return
         width = self.root.winfo_screenwidth()
         height = self.root.winfo_screenheight()
         if self.cfg.mode == MODE_RELOGIO:
+            self._preparing = False
             try:
                 scene = build_clock_scene(width, height)
-                self.saver = ScreensaverWindow(
-                    self.root,
-                    scene,
-                    self.ui_family,
-                    self._on_saver_closed,
-                    idle_probe=self.monitor.seconds,
-                )
-                log("Protetor exibido (só o relógio)")
+                self._show_saver_scene(scene, "só o relógio")
             except Exception:  # noqa: BLE001
                 log(
                     "Falha ao mostrar o relógio:\n" + traceback.format_exc()
@@ -2257,9 +2395,66 @@ class RelogioVivo:
                 self._restore_after_saver()
             return
 
+        # Modo "prévia da tela": captura em segundo plano. _preparing fica
+        # True até a imagem aparecer (ou até o tempo esgotar), então nenhum
+        # outro protetor é iniciado no meio do caminho.
+        self._start_capture(width, height)
+
+    def _start_capture(self, width: int, height: int) -> None:
+        self._capture_token += 1
+        token = self._capture_token
+        self._capture_result = None
+        threading.Thread(
+            target=self._capture_worker,
+            args=(token, width, height),
+            daemon=True,
+        ).start()
+        deadline = time.monotonic() + CAPTURE_UI_TIMEOUT
+        self.root.after(120, self._watch_capture, token, deadline)
+
+    def _capture_worker(self, token: int, width: int, height: int) -> None:
+        payload: dict[str, object] = {"token": token}
         try:
             shot = capture_screen((0, 0, width, height))
-            scene = build_scene(shot, width, height)
+            payload["scene"] = build_scene(shot, width, height)
+        except BaseException as exc:  # noqa: BLE001 - a thread não pode morrer
+            payload["error"] = exc
+            payload["traceback"] = traceback.format_exc()
+        if self._capture_token == token:
+            self._capture_result = payload
+
+    def _watch_capture(self, token: int, deadline: float) -> None:
+        if self._shutting_down or token != self._capture_token:
+            return
+        if self.saver is not None:
+            return
+        result = self._capture_result
+        if result is not None and result.get("token") == token:
+            self._capture_result = None
+            scene = result.get("scene")
+            if scene is not None:
+                self._show_saver_scene(scene, "prévia da tela")
+            else:
+                self._capture_failed(
+                    result.get("error"),
+                    str(result.get("traceback") or ""),
+                )
+            return
+        if time.monotonic() >= deadline:
+            self._capture_failed(
+                TimeoutError(
+                    f"a captura demorou mais de {CAPTURE_UI_TIMEOUT}s"
+                ),
+                "",
+            )
+            return
+        self.root.after(120, self._watch_capture, token, deadline)
+
+    def _show_saver_scene(self, scene, rotulo: str) -> None:
+        self._preparing = False
+        if self._shutting_down:
+            return
+        try:
             self.saver = ScreensaverWindow(
                 self.root,
                 scene,
@@ -2267,20 +2462,43 @@ class RelogioVivo:
                 self._on_saver_closed,
                 idle_probe=self.monitor.seconds,
             )
-            log("Protetor exibido (prévia da tela)")
-        except Exception as exc:  # noqa: BLE001
+            log(f"Protetor exibido ({rotulo})")
+        except Exception:  # noqa: BLE001
             log("Falha ao mostrar o protetor:\n" + traceback.format_exc())
-            self._capture_block_until = time.monotonic() + 600
-            if not self._capture_warned:
-                self._capture_warned = True
-                messagebox.showerror(
-                    APP_NAME,
-                    "Não foi possível capturar a tela.\n\n"
-                    f"{exc}\n\n{_capture_hint()}\n\n"
-                    "Dica: em Configurações, escolha o estilo "
-                    "“Só o relógio” para usar sem captura.",
-                    parent=self.root,
-                )
+            self._restore_after_saver()
+
+    def _capture_failed(self, exc: object, detalhe: str = "") -> None:
+        # Invalida qualquer resultado que ainda chegue da thread.
+        self._capture_token += 1
+        self._capture_result = None
+        mensagem = f"{type(exc).__name__}: {exc}" if exc else "tempo esgotado"
+        if detalhe:
+            log("Captura de tela falhou:\n" + detalhe)
+        else:
+            log("Captura de tela falhou: " + mensagem)
+
+        # Não insiste em capturar por 2 minutos; o relógio aparece normalmente.
+        self._capture_block_until = time.monotonic() + 120
+        if not self._capture_warned:
+            self._capture_warned = True
+            desktop_notify(
+                APP_NAME,
+                "Não foi possível capturar a tela.\n"
+                f"{mensagem}\n\n"
+                f"{_capture_hint()}\n\n"
+                "Mostrando só o relógio. Para usar a prévia, rode de novo o "
+                "instalador (ele instala o que falta) ou escolha "
+                "“Só o relógio” em Configurações.",
+            )
+
+        # Em vez de travar/ficar sem imagem, mostra o relógio.
+        width = self.root.winfo_screenwidth()
+        height = self.root.winfo_screenheight()
+        try:
+            scene = build_clock_scene(width, height)
+            self._show_saver_scene(scene, "só o relógio (captura indisponível)")
+        except Exception:  # noqa: BLE001
+            log("Falha ao mostrar o relógio:\n" + traceback.format_exc())
             self._restore_after_saver()
 
     def _restore_after_saver(self) -> None:
@@ -2351,10 +2569,23 @@ def _capture_hint() -> str:
         )
     if os.name == "nt":
         return "Verifique se o Pillow está instalado (pip install pillow)."
+    wayland = os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+    if wayland:
+        return (
+            "No Wayland, o caminho certo é o GNOME Shell (D-Bus). Instale com: "
+            "sudo apt install libglib2.0-bin gnome-screenshot grim; depois saia "
+            "e entre de novo na sessão (ou reinicie) para valer."
+        )
+    if not shutil.which("gdbus"):
+        return (
+            "No Ubuntu/Debian instale: sudo apt install python3-pil "
+            "python3-tk python3-pil.imagetk libglib2.0-bin xprintidle "
+            "gnome-screenshot. O instalador do Relógio Vivo já faz isso."
+        )
     return (
-        "No Linux, instale o Pillow e, no Wayland, um capturador como grim, "
-        "gnome-screenshot ou spectacle. Em X11 também pode ser necessário "
-        "instalar python3-tk e libxss1."
+        "Instale as ferramentas de captura com: sudo apt install "
+        "gnome-screenshot grim libglib2.0-bin xprintidle libxss1. "
+        "O instalador do Relógio Vivo já faz isso automaticamente."
     )
 
 
@@ -2402,6 +2633,15 @@ def run_check() -> int:
 
     backends = available_capture_backends()
     print("Captura de tela: " + (", ".join(backends) if backends else "indisponível"))
+    if os.name != "nt" and sys.platform != "darwin":
+        session = os.environ.get("XDG_SESSION_TYPE") or (
+            "wayland" if os.environ.get("WAYLAND_DISPLAY") else "x11"
+        )
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP") or "?"
+        print(f"Sessão: {session} · desktop: {desktop}")
+        for cmd in ("gdbus", "gnome-screenshot", "grim", "notify-send", "xprintidle"):
+            estado = "OK" if shutil.which(cmd) else "FALTANDO"
+            print(f"  {cmd}: {estado}")
 
     cfg, _ = Config.load()
     print(f"Modo do protetor: {MODE_LABELS.get(cfg.mode, cfg.mode)}")
