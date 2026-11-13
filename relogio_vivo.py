@@ -3,9 +3,12 @@
 """
 Relógio Vivo — protetor de tela com a hora e a data.
 
-Depois de alguns minutos sem teclado/mouse, o app captura a tela, escurece
-e desfoca a imagem como fundo e coloca um cartão com a hora e a data em
-baixo, deslizando de um lado para o outro no centro da tela.
+Depois de alguns minutos sem teclado/mouse, o app pode aparecer de dois jeitos:
+
+* "Prévia da tela": captura a tela, escurece e desfoca a imagem como fundo e
+  coloca um cartão com a hora e a data em baixo, deslizando pela tela.
+* "Só o relógio": não captura nada. Mostra um relógio grande e a data sobre um
+  fundo escuro, centralizado e com uma leve flutuação.
 
 Plataformas: Windows, Linux (X11 e Wayland) e macOS.
 Interface: Tkinter (stdlib). Dependência externa: Pillow.
@@ -51,9 +54,10 @@ except Exception as exc:  # noqa: BLE001 - Tk pode faltar no Linux
     TK_ERROR = str(exc)
 
 try:
-    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageGrab
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageGrab
 except ImportError:  # tratado com uma mensagem amigável em main()
     Image = None  # type: ignore[assignment]
+    ImageFont = None  # type: ignore[assignment]
 
 try:
     from PIL import ImageTk
@@ -62,9 +66,17 @@ except Exception:  # Pillow sem Tk ou Tk ausente
 
 APP_NAME = "Relógio Vivo"
 APP_ID = "relogio-vivo"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 AUTOSTART_NAME = "RelogioVivo"
 AUTOSTART_LABEL = "com.relogiovivo.screensaver"
+
+# Modos de exibição do protetor.
+MODE_TELA = "tela"
+MODE_RELOGIO = "relogio"
+MODE_LABELS = {
+    MODE_TELA: "Prévia da tela",
+    MODE_RELOGIO: "Só o relógio",
+}
 
 # Cores da interface
 BG = "#0b0f17"
@@ -156,6 +168,7 @@ def trim_log() -> None:
 class Config:
     idle_minutes: int = 5
     autostart: bool = False
+    mode: str = MODE_TELA
 
     @classmethod
     def load(cls) -> tuple["Config", bool]:
@@ -167,9 +180,12 @@ class Config:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 cfg.idle_minutes = int(data.get("idle_minutes", 5))
                 cfg.autostart = bool(data.get("autostart", False))
+                cfg.mode = str(data.get("mode", MODE_TELA))
             except (OSError, ValueError, TypeError):
                 cfg = cls()
         cfg.idle_minutes = max(1, min(60, cfg.idle_minutes))
+        if cfg.mode not in (MODE_TELA, MODE_RELOGIO):
+            cfg.mode = MODE_TELA
         return cfg, existed
 
     def save(self) -> None:
@@ -179,7 +195,11 @@ class Config:
             tmp = path.with_suffix(".tmp")
             tmp.write_text(
                 json.dumps(
-                    {"idle_minutes": self.idle_minutes, "autostart": self.autostart},
+                    {
+                        "idle_minutes": self.idle_minutes,
+                        "autostart": self.autostart,
+                        "mode": self.mode,
+                    },
                     ensure_ascii=False,
                     indent=2,
                 ),
@@ -726,6 +746,7 @@ class Scene:
     date_px: int
     margin: int
     bob: int
+    mode: str = MODE_TELA
 
 
 def _fit_cover(image, width: int, height: int):
@@ -839,16 +860,154 @@ def build_scene(shot, screen_w: int, screen_h: int) -> Scene:
     )
 
 
-def save_snapshot(path: str) -> Path:
-    """Diagnóstico: captura a tela e salva a cena completa em um PNG."""
+def _clock_background(screen_w: int, screen_h: int):
+    """Fundo escuro em degradê com um brilho suave atrás do relógio.
+
+    Não usa captura de tela — funciona igual em qualquer sistema e não
+    precisa de permissão de gravação de tela.
+    """
+    image = Image.new("RGB", (screen_w, screen_h), (5, 8, 15))
+    draw = ImageDraw.Draw(image)
+    top = (12, 20, 38)
+    bottom = (3, 5, 10)
+    for y in range(screen_h):
+        t = y / max(1, screen_h - 1)
+        color = tuple(
+            int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)
+        )
+        draw.line([(0, y), (screen_w, y)], fill=color)
+
+    try:
+        glow = Image.new("RGBA", (screen_w, screen_h), (0, 0, 0, 0))
+        gdraw = ImageDraw.Draw(glow)
+        radius = int(min(screen_w, screen_h) * 0.46)
+        cx, cy = screen_w // 2, screen_h // 2
+        steps = 26
+        for step in range(steps, 0, -1):
+            r = max(1, int(radius * step / steps))
+            fade = 1 - step / steps
+            alpha = int(2 + 26 * (fade ** 1.6))
+            gdraw.ellipse(
+                (cx - r, cy - r, cx + r, cy + r),
+                fill=(94, 234, 212, alpha),
+            )
+        glow = glow.filter(ImageFilter.GaussianBlur(max(10, radius // 10)))
+        image = Image.alpha_composite(
+            image.convert("RGBA"), glow
+        ).convert("RGB")
+    except Exception:
+        pass
+
+    return image
+
+
+def build_clock_scene(screen_w: int, screen_h: int) -> Scene:
+    """Monta a cena do modo "só o relógio" (sem captura da tela)."""
+    time_px = max(56, int(screen_h * 0.235))
+    date_px = max(14, int(screen_h * 0.042))
+    return Scene(
+        background=_clock_background(screen_w, screen_h),
+        card=Image.new("RGBA", (4, 4), (0, 0, 0, 0)),
+        screen_w=screen_w,
+        screen_h=screen_h,
+        card_w=int(screen_w * 0.92),
+        card_h=int(screen_h * 0.55),
+        pad=0,
+        bar_h=0,
+        time_px=time_px,
+        date_px=date_px,
+        margin=0,
+        bob=max(3, int(screen_h * 0.009)),
+        mode=MODE_RELOGIO,
+    )
+
+
+def _preview_font(size: int):
+    """Fonte aproximada para a prévia em PNG (sem depender da Tk)."""
+    if ImageFont is None:
+        return None
+    candidates = (
+        "C:/Windows/Fonts/segoeuib.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/Library/Fonts/Arial Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "DejaVuSans-Bold.ttf",
+        "Arial Bold.ttf",
+    )
+    for candidate in candidates:
+        try:
+            return ImageFont.truetype(candidate, size)
+        except (OSError, ValueError):
+            continue
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        return ImageFont.load_default()
+    except Exception:
+        return None
+
+
+def save_snapshot(path: str, mode: str = MODE_TELA) -> Path:
+    """Diagnóstico: salva a cena do modo escolhido em um PNG."""
     if Image is None:
         raise CaptureError("Pillow não está instalado (pip install pillow)")
-    shot = capture_screen()
-    scene = build_scene(shot, shot.width, shot.height)
-    canvas = scene.background.convert("RGBA")
-    x = (scene.screen_w - scene.card_w) // 2 - scene.pad
-    y = (scene.screen_h - scene.card_h) // 2 - scene.pad
-    canvas.alpha_composite(scene.card, (x, y))
+    if mode == MODE_RELOGIO:
+        try:
+            screen_w = int(os.environ.get("RELOGIO_VIVO_SNAPSHOT_W") or 0)
+            screen_h = int(os.environ.get("RELOGIO_VIVO_SNAPSHOT_H") or 0)
+        except ValueError:
+            screen_w, screen_h = 0, 0
+        if screen_w <= 0 or screen_h <= 0:
+            try:
+                probe = tk.Tk()
+                probe.withdraw()
+                screen_w = probe.winfo_screenwidth()
+                screen_h = probe.winfo_screenheight()
+                probe.destroy()
+            except Exception:
+                screen_w, screen_h = 1920, 1080
+        scene = build_clock_scene(screen_w, screen_h)
+        canvas = scene.background.convert("RGBA")
+        draw = ImageDraw.Draw(canvas)
+        clock = time.strftime("%H:%M:%S", time.localtime())
+        date = format_date(time.localtime())
+        time_font = _preview_font(scene.time_px)
+        date_font = _preview_font(scene.date_px)
+        center_x = screen_w // 2
+        time_y = int(screen_h * 0.46)
+        date_y = int(screen_h * 0.61)
+        if time_font is not None:
+            draw.text(
+                (center_x + 3, time_y + 3),
+                clock,
+                font=time_font,
+                anchor="mm",
+                fill=(0, 0, 0, 170),
+            )
+            draw.text(
+                (center_x, time_y),
+                clock,
+                font=time_font,
+                anchor="mm",
+                fill=(255, 255, 255, 255),
+            )
+        if date_font is not None:
+            draw.text(
+                (center_x, date_y),
+                date,
+                font=date_font,
+                anchor="mm",
+                fill=(198, 210, 228, 255),
+            )
+    else:
+        shot = capture_screen()
+        scene = build_scene(shot, shot.width, shot.height)
+        canvas = scene.background.convert("RGBA")
+        x = (scene.screen_w - scene.card_w) // 2 - scene.pad
+        y = (scene.screen_h - scene.card_h) // 2 - scene.pad
+        canvas.alpha_composite(scene.card, (x, y))
     out = Path(path).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out)
@@ -887,13 +1046,19 @@ def pick_family(root) -> str:
 
 
 class ScreensaverWindow:
-    """Tela cheia com o cartão deslizando e o relógio ao vivo."""
+    """Tela cheia com o relógio ao vivo.
+
+    No modo "prévia da tela" o cartão desliza sobre a captura desfocada.
+    No modo "só o relógio" a hora grande e a data ficam centralizadas,
+    flutuando de leve sobre um fundo escuro (sem captura).
+    """
 
     def __init__(
         self, master, scene: Scene, family: str, on_close, idle_probe=None
     ) -> None:
         self.master = master
         self.scene = scene
+        self.clock_only = scene.mode == MODE_RELOGIO
         self.on_close = on_close
         self.idle_probe = idle_probe
         self.closed = False
@@ -923,8 +1088,15 @@ class ScreensaverWindow:
         self.canvas.pack(fill="both", expand=True)
 
         self.bg_photo = ImageTk.PhotoImage(scene.background, master=self.top)
-        self.card_photo = ImageTk.PhotoImage(scene.card, master=self.top)
         self.canvas.create_image(0, 0, anchor="nw", image=self.bg_photo)
+        if self.clock_only:
+            self.card_photo = None
+            self.card_item = None
+        else:
+            self.card_photo = ImageTk.PhotoImage(scene.card, master=self.top)
+            self.card_item = self.canvas.create_image(
+                0, 0, anchor="nw", image=self.card_photo
+            )
 
         self.time_font = tkfont.Font(
             family=family, size=-scene.time_px, weight="bold"
@@ -932,16 +1104,16 @@ class ScreensaverWindow:
         date_px = scene.date_px
         self.date_font = tkfont.Font(family=family, size=-date_px)
         sample = format_date(time.localtime())
-        while self.date_font.measure(sample) > scene.card_w * 0.90 and date_px > 10:
+        date_limit = (
+            scene.screen_w * 0.90 if self.clock_only else scene.card_w * 0.90
+        )
+        while self.date_font.measure(sample) > date_limit and date_px > 10:
             date_px -= 1
             self.date_font.configure(size=-date_px)
         self.hint_font = tkfont.Font(
             family=family, size=-max(12, scene.screen_h // 85)
         )
 
-        self.card_item = self.canvas.create_image(
-            0, 0, anchor="nw", image=self.card_photo
-        )
         self.time_shadow = self.canvas.create_text(
             0, 0, text="", fill="#000000", font=self.time_font, anchor="center"
         )
@@ -1063,23 +1235,33 @@ class ScreensaverWindow:
 
         min_x = float(scene.margin)
         max_x = float(max(min_x, scene.screen_w - scene.card_w - scene.margin))
-        self.x += self.speed * self.direction * dt
-        if self.x >= max_x:
-            self.x = max_x
-            self.direction = -1
-        elif self.x <= min_x:
-            self.x = min_x
-            self.direction = 1
 
-        bob = math.sin(elapsed * 0.9) * scene.bob
-        y = (scene.screen_h - scene.card_h) / 2 + bob
+        if self.clock_only:
+            # Relógio grande centralizado, com uma flutuação bem leve.
+            bob = math.sin(elapsed * 0.55) * scene.bob
+            center_x = scene.screen_w / 2
+            time_y = scene.screen_h * 0.465 + bob
+            date_y = scene.screen_h * 0.615 + bob
+        else:
+            self.x += self.speed * self.direction * dt
+            if self.x >= max_x:
+                self.x = max_x
+                self.direction = -1
+            elif self.x <= min_x:
+                self.x = min_x
+                self.direction = 1
 
-        self.canvas.coords(
-            self.card_item, self.x - scene.pad, y - scene.pad
-        )
-        center_x = self.x + scene.card_w / 2
-        time_y = y + scene.card_h - scene.bar_h * 0.60
-        date_y = y + scene.card_h - scene.bar_h * 0.22
+            bob = math.sin(elapsed * 0.9) * scene.bob
+            y = (scene.screen_h - scene.card_h) / 2 + bob
+
+            if self.card_item is not None:
+                self.canvas.coords(
+                    self.card_item, self.x - scene.pad, y - scene.pad
+                )
+            center_x = self.x + scene.card_w / 2
+            time_y = y + scene.card_h - scene.bar_h * 0.60
+            date_y = y + scene.card_h - scene.bar_h * 0.22
+
         self.canvas.coords(self.time_shadow, center_x, time_y + 2)
         self.canvas.coords(self.time_text, center_x, time_y)
         self.canvas.coords(self.date_shadow, center_x, date_y + 2)
@@ -1241,13 +1423,14 @@ class SettingsWindow:
         tk.Label(
             wrap,
             text="Depois de alguns minutos sem tocar no teclado ou mouse,\n"
-            "sua tela vira um retrato vivo com a hora e a data.",
+            "o protetor aparece com a prévia da sua tela ou só com o relógio.",
             bg=BG,
             fg=MUTED,
             font=(self.family, 10),
             justify="left",
         ).pack(anchor="w", pady=(4, 18))
 
+        self._build_mode_card(wrap)
         self._build_idle_card(wrap)
         self._build_autostart_card(wrap)
         self._build_test_card(wrap)
@@ -1344,6 +1527,79 @@ class SettingsWindow:
         button.bind("<Enter>", lambda _e: button.configure(fg=TEXT))
         button.bind("<Leave>", lambda _e: button.configure(fg=MUTED))
         return button
+
+    def _build_mode_card(self, parent) -> None:
+        card = self._card(parent)
+        tk.Label(
+            card,
+            text="Estilo do protetor",
+            bg=CARD,
+            fg=TEXT,
+            font=(self.family, 11, "bold"),
+        ).pack(anchor="w")
+
+        self.mode_var = tk.StringVar(value=self.app.cfg.mode)
+        options = (
+            (
+                MODE_TELA,
+                "Prévia da tela",
+                "Captura a tela antes de ativar, escurece e desfoca a imagem "
+                "e coloca a hora e a data em um cartão que desliza.",
+            ),
+            (
+                MODE_RELOGIO,
+                "Só o relógio",
+                "Não captura nada. Mostra a hora grande e a data no centro, "
+                "sobre um fundo escuro. Funciona em qualquer sistema, sem "
+                "pedir permissão de gravação de tela.",
+            ),
+        )
+        for value, title, description in options:
+            row = tk.Frame(card, bg=CARD)
+            row.pack(fill="x", pady=(10, 0))
+            tk.Radiobutton(
+                row,
+                text=title,
+                variable=self.mode_var,
+                value=value,
+                command=self._apply_mode,
+                bg=CARD,
+                fg=TEXT,
+                activebackground=CARD,
+                activeforeground=TEXT,
+                selectcolor=ACCENT,
+                font=(self.family, 10, "bold"),
+                bd=0,
+                highlightthickness=0,
+                anchor="w",
+                cursor="hand2",
+            ).pack(anchor="w")
+            tk.Label(
+                card,
+                text=description,
+                bg=CARD,
+                fg=MUTED,
+                font=(self.family, 9),
+                wraplength=520,
+                justify="left",
+            ).pack(anchor="w", padx=(24, 0), pady=(1, 0))
+
+    def _apply_mode(self) -> None:
+        self.app.set_mode(self.mode_var.get())
+        self._refresh_mode_hint()
+
+    def _refresh_mode_hint(self) -> None:
+        if self.app.cfg.mode == MODE_RELOGIO:
+            text = (
+                "Abre o protetor só com o relógio grande, sem capturar a tela. "
+                "Mova o mouse ou pressione qualquer tecla para sair."
+            )
+        else:
+            text = (
+                "Captura a tela e abre o protetor com a prévia desfocada. "
+                "Mova o mouse ou pressione qualquer tecla para sair."
+            )
+        self.test_help.configure(text=text)
 
     def _build_idle_card(self, parent) -> None:
         card = self._card(parent)
@@ -1456,16 +1712,17 @@ class SettingsWindow:
         self._button(row, "Testar agora", self.app.start_test, primary=True).pack(
             side="right"
         )
-        tk.Label(
+        self.test_help = tk.Label(
             card,
-            text="Captura a tela e abre o protetor. Mova o mouse ou pressione "
-            "qualquer tecla para sair.",
+            text="",
             bg=CARD,
             fg=MUTED,
             font=(self.family, 9),
             wraplength=540,
             justify="left",
-        ).pack(anchor="w", pady=(6, 0))
+        )
+        self.test_help.pack(anchor="w", pady=(6, 0))
+        self._refresh_mode_hint()
 
     def _center(self) -> None:
         self.root.update_idletasks()
@@ -1660,14 +1917,15 @@ class SingleInstance:
         self._fh = None
 
 
-def write_request(command: str) -> None:
+def write_request(command: str, mode: str | None = None) -> None:
     try:
         config_dir().mkdir(parents=True, exist_ok=True)
         path = request_file()
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"cmd": command, "ts": time.time()}), encoding="utf-8"
-        )
+        payload: dict[str, object] = {"cmd": command, "ts": time.time()}
+        if mode in (MODE_TELA, MODE_RELOGIO):
+            payload["mode"] = mode
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
         os.replace(tmp, path)
     except OSError as exc:
         log(f"Não foi possível gravar o pedido {command}: {exc}")
@@ -1887,7 +2145,13 @@ class RelogioVivo:
             if self._preparing:
                 return
             now = time.monotonic()
-            if now < self._suppress_until or now < self._capture_block_until:
+            # O bloqueio só vale para o modo que captura a tela. No modo
+            # "só o relógio" não há captura, então nada impede a ativação.
+            captura_bloqueada = (
+                self.cfg.mode == MODE_TELA
+                and now < self._capture_block_until
+            )
+            if now < self._suppress_until or captura_bloqueada:
                 return
             if self.last_idle is None:
                 return
@@ -1911,6 +2175,9 @@ class RelogioVivo:
             return
         if time.time() - float(data.get("ts", 0)) > 30:
             return
+        mode = data.get("mode")
+        if mode in (MODE_TELA, MODE_RELOGIO):
+            self.set_mode(mode)
         command = data.get("cmd")
         if command == "settings":
             self.open_settings()
@@ -1933,6 +2200,12 @@ class RelogioVivo:
 
     def set_idle_minutes(self, minutes: int) -> None:
         self.cfg.idle_minutes = max(1, min(60, int(minutes)))
+
+    def set_mode(self, mode: str) -> None:
+        if mode not in (MODE_TELA, MODE_RELOGIO):
+            mode = MODE_TELA
+        self.cfg.mode = mode
+        self.save_config()
 
     def save_config(self) -> None:
         self.cfg.save()
@@ -1966,6 +2239,24 @@ class RelogioVivo:
             return
         width = self.root.winfo_screenwidth()
         height = self.root.winfo_screenheight()
+        if self.cfg.mode == MODE_RELOGIO:
+            try:
+                scene = build_clock_scene(width, height)
+                self.saver = ScreensaverWindow(
+                    self.root,
+                    scene,
+                    self.ui_family,
+                    self._on_saver_closed,
+                    idle_probe=self.monitor.seconds,
+                )
+                log("Protetor exibido (só o relógio)")
+            except Exception:  # noqa: BLE001
+                log(
+                    "Falha ao mostrar o relógio:\n" + traceback.format_exc()
+                )
+                self._restore_after_saver()
+            return
+
         try:
             shot = capture_screen((0, 0, width, height))
             scene = build_scene(shot, width, height)
@@ -1976,7 +2267,7 @@ class RelogioVivo:
                 self._on_saver_closed,
                 idle_probe=self.monitor.seconds,
             )
-            log("Protetor exibido")
+            log("Protetor exibido (prévia da tela)")
         except Exception as exc:  # noqa: BLE001
             log("Falha ao mostrar o protetor:\n" + traceback.format_exc())
             self._capture_block_until = time.monotonic() + 600
@@ -1985,7 +2276,9 @@ class RelogioVivo:
                 messagebox.showerror(
                     APP_NAME,
                     "Não foi possível capturar a tela.\n\n"
-                    f"{exc}\n\n{_capture_hint()}",
+                    f"{exc}\n\n{_capture_hint()}\n\n"
+                    "Dica: em Configurações, escolha o estilo "
+                    "“Só o relógio” para usar sem captura.",
                     parent=self.root,
                 )
             self._restore_after_saver()
@@ -2110,6 +2403,10 @@ def run_check() -> int:
     backends = available_capture_backends()
     print("Captura de tela: " + (", ".join(backends) if backends else "indisponível"))
 
+    cfg, _ = Config.load()
+    print(f"Modo do protetor: {MODE_LABELS.get(cfg.mode, cfg.mode)}")
+    print(f"Ativar após: {cfg.idle_minutes} min de inatividade")
+
     print(f"Configuração: {config_file()}")
     print(f"Log: {log_file()}")
     if is_autostart_enabled():
@@ -2148,6 +2445,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="salva uma prévia da cena em PNG (diagnóstico)",
     )
     parser.add_argument(
+        "--mode",
+        choices=(MODE_TELA, MODE_RELOGIO),
+        help="define o estilo do protetor: 'tela' (prévia da tela) ou "
+        "'relogio' (só o relógio)",
+    )
+    parser.add_argument(
         "--install-autostart",
         action="store_true",
         help="ativa a inicialização automática",
@@ -2177,7 +2480,8 @@ def main(argv=None) -> int:
 
         if args.snapshot:
             try:
-                out = save_snapshot(args.snapshot)
+                cfg, _ = Config.load()
+                out = save_snapshot(args.snapshot, args.mode or cfg.mode)
             except Exception as exc:  # noqa: BLE001
                 print(f"Falha ao gerar a prévia: {exc}")
                 return 1
@@ -2215,6 +2519,9 @@ def main(argv=None) -> int:
         return 1
 
     cfg, existed = Config.load()
+    if args.mode:
+        cfg.mode = args.mode
+        cfg.save()
     if not existed:
         cfg.save()
 
@@ -2241,7 +2548,7 @@ def main(argv=None) -> int:
         if action == "background":
             return 0
         if action in ("settings", "test"):
-            write_request(action)
+            write_request(action, mode=args.mode)
         if action == "settings":
             notify(
                 "O Relógio Vivo já está em execução.\n"

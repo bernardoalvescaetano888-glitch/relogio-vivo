@@ -3,7 +3,7 @@
 #
 # Uso:
 #   bash installer/linux/build_deb.sh            # gera dist/relogio-vivo_<versao>_all.deb
-#   bash installer/linux/build_deb.sh --version 1.2.0
+#   bash installer/linux/build_deb.sh --version <versao>
 #
 # Precisa de: dpkg-deb (vem com o dpkg). Funciona em qualquer Debian/Ubuntu.
 #

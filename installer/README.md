@@ -2,8 +2,14 @@
 
 Cada sistema tem um formato próprio de instalador. Não existe "um .exe que
 instala em tudo": o Windows não executa `.pkg`, o macOS não executa `.exe` e
-o Linux usa `.deb`/`.rpm`. Por isso a release publica um arquivo para cada
-sistema, e o GitHub Actions gera todos automaticamente.
+o Linux usa `.deb`/`.rpm`. Por isso a release publica **dois ZIPs**:
+
+- `install.zip` com as pastas `windows/`, `mac/`, `linux/` e `debian/`;
+- `portatil.zip` com as pastas `windows/`, `mac/` e `linux/` (sem instalação).
+
+O GitHub Actions gera tudo automaticamente em cada tag. O script
+`installer/make_bundle.py` monta as pastas e os ZIPs a partir de `dist/` ou
+dos artefatos do CI.
 
 | Sistema | Formato | Ferramenta | Arquivo gerado |
 |---|---|---|---|
@@ -80,10 +86,28 @@ Nenhum dos instaladores é assinado. Consequências:
 - **Linux**: `.deb` local pede confirmação do `apt` por não estar num
   repositório assinado; use `sudo apt install ./arquivo.deb`.
 
+## Montar os ZIPs na mão
+
+Depois de gerar os instaladores e os portáteis em `dist/` (ou de baixar os
+artefatos do CI para `artifacts/`):
+
+```bash
+python installer/make_bundle.py
+```
+
+O script cria `dist/install/` e `dist/portatil/` já organizados e gera
+`dist/install.zip` e `dist/portatil.zip`. Ele aceita `--version` e `--out`.
+
 ## Publicação
 
 Numa tag `v*`, o workflow `.github/workflows/build.yml` compila em máquinas
-nativas (Windows, Linux e macOS), gera os instaladores e anexa na release.
-O job `windows-arm64` usa o runner `windows-11-arm` do GitHub; se ele não
-estiver disponível no momento, o build ARM64 pode ser feito localmente com
-`build_windows.ps1` + `installer/windows/build_setup.ps1 -Arch arm64`.
+nativas (Windows x64/ARM64, Linux x64/ARM64 e macOS Intel/Apple Silicon),
+monta os dois ZIPs e publica **somente** `install.zip` e `portatil.zip`.
+O job `windows-arm64` usa o runner `windows-11-arm`; o Linux ARM64 usa
+`ubuntu-24.04-arm`. Se um deles não estiver disponível, a release ainda roda
+(`always()`), mas os ZIPs podem sair sem esses binários — nesse caso, rode
+`make_bundle.py` localmente com os binários faltantes e reenvie:
+
+```bash
+gh release upload v1.3.0 dist/install.zip dist/portatil.zip --clobber
+```

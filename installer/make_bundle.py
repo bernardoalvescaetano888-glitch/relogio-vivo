@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Monta os dois ZIPs divulgados na release.
 
-    RelogioVivo-<versao>-setup.zip      -> instaladores (Windows, Linux, macOS)
-    RelogioVivo-<versao>-portatil.zip   -> versões sem instalação
+    install.zip    -> instaladores: windows/, mac/, linux/, debian/
+    portatil.zip   -> sem instalação: windows/, mac/, linux/
 
 Os arquivos são procurados em dist/ e, se não estiverem lá, dentro de
-artifacts/ (é onde o GitHub Actions deixa os artefatos do build).
+artifacts/ (é onde o GitHub Actions deixa os artefatos do build). O script
+também organiza as mesmas pastas dentro de dist/ e remove os ZIPs antigos
+com nome por versão.
 
 Uso:
     python3 installer/make_bundle.py
-    python3 installer/make_bundle.py --version 1.2.0 --out dist
+    python3 installer/make_bundle.py --version 1.3.0 --out dist
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 import zipfile
 from pathlib import Path
@@ -24,18 +27,20 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------- conteúdo
 
-SETUP = {
+INSTALL = {
     "windows": [
         "RelogioVivo-Setup-{v}-win-x64.exe",
         "RelogioVivo-Setup-{v}-win-arm64.exe",
     ],
-    "linux": [
-        "relogio-vivo_{v}_all.deb",
-        "instalar.sh",
-    ],
-    "macos": [
+    "mac": [
         "RelogioVivo-Setup-{v}-macos-arm64.pkg",
         "RelogioVivo-Setup-{v}-macos-x64.pkg",
+    ],
+    "linux": [
+        "instalar.sh",
+    ],
+    "debian": [
+        "relogio-vivo_{v}_all.deb",
     ],
 }
 
@@ -44,38 +49,40 @@ PORTATIL = {
         "RelogioVivo-win-x64.exe",
         "RelogioVivo-win-arm64.exe",
     ],
+    "mac": [
+        "RelogioVivo-macos-arm64.zip",
+        "RelogioVivo-macos-x64.zip",
+    ],
     "linux": [
         "RelogioVivo-linux-x64.tar.gz",
         "RelogioVivo-linux-arm64.tar.gz",
     ],
-    "macos": [
-        "RelogioVivo-macos-arm64.zip",
-        "RelogioVivo-macos-x64.zip",
-    ],
 }
 
-LEIA_ME_SETUP = """\
+LEIA_ME_INSTALL = """\
 Relógio Vivo {versao} — instaladores
 ====================================
 
 Escolha UMA pasta de acordo com o seu sistema e abra o instalador.
 
-  setup/windows/
-    RelogioVivo-Setup-{versao}-win-arm64.exe   -> PC Windows ARM (Snapdragon)
+  windows/
     RelogioVivo-Setup-{versao}-win-x64.exe     -> PC Windows Intel ou AMD
+    RelogioVivo-Setup-{versao}-win-arm64.exe   -> PC Windows ARM (Snapdragon)
     (na dúvida, use o x64; ele também funciona em Windows ARM por emulação)
 
-  setup/linux/
-    relogio-vivo_{versao}_all.deb              -> Debian, Ubuntu, Mint, Pop!_OS
-        Instale com:  sudo apt install ./relogio-vivo_{versao}_all.deb
-    instalar.sh                                -> qualquer Linux, instala tudo sozinho
-        Instale com:  bash instalar.sh
-
-  setup/macos/
+  mac/
     RelogioVivo-Setup-{versao}-macos-arm64.pkg -> Mac com chip Apple (M1/M2/M3/M4)
     RelogioVivo-Setup-{versao}-macos-x64.pkg   -> Mac com processador Intel
-        Abra o .pkg com dois cliques. Se o macOS reclamar, clique com o botão
-        direito > Abrir.
+    Abra o .pkg com dois cliques. Se o macOS reclamar, clique com o botão
+    direito > Abrir.
+
+  linux/
+    instalar.sh -> instala tudo sozinho em qualquer distribuição Linux
+    Instale com:  bash instalar.sh
+
+  debian/
+    relogio-vivo_{versao}_all.deb -> Debian, Ubuntu, Mint, Pop!_OS, Zorin
+    Instale com:  sudo apt install ./relogio-vivo_{versao}_all.deb
 
 O que os instaladores fazem
 ---------------------------
@@ -85,6 +92,15 @@ O que os instaladores fazem
   Linux   : instala o comando "relogio-vivo", o atalho no menu, o ícone e as
             dependências (python3, python3-tk, python3-pil.imagetk).
   macOS   : instala o app em /Applications.
+
+Dois estilos de protetor
+------------------------
+  Em Configurações você escolhe:
+    - Prévia da tela: captura a tela antes de ativar e usa a imagem desfocada
+      como fundo, com a hora e a data em um cartão que desliza.
+    - Só o relógio: não captura nada. Mostra a hora grande e a data no centro
+      sobre um fundo escuro. Ideal para qualquer sistema e para quem não quer
+      dar permissão de gravação de tela.
 
 Observação: nenhum instalador é assinado. O Windows pode mostrar o aviso do
 SmartScreen ("Mais informações > Executar assim mesmo") e o macOS pode pedir
@@ -106,28 +122,36 @@ Relógio Vivo {versao} — versões sem instalação (portáteis)
 Não instala nada: é só extrair e executar. Ideal para pendrive ou para
 testar sem mexer no sistema.
 
-  portatil/windows/
-    RelogioVivo-win-arm64.exe   -> PC Windows ARM (Snapdragon)
+  windows/
     RelogioVivo-win-x64.exe     -> PC Windows Intel ou AMD
-        Dê dois cliques. Na primeira vez ele pergunta se pode iniciar com o
-        computador.
+    RelogioVivo-win-arm64.exe   -> PC Windows ARM (Snapdragon)
+    Dê dois cliques. Na primeira vez ele pergunta se pode iniciar com o
+    computador.
 
-  portatil/linux/
-    RelogioVivo-linux-x64.tar.gz    -> Linux x86_64 (Intel/AMD)
-    RelogioVivo-linux-arm64.tar.gz  -> Linux ARM64 (Raspberry Pi, notebooks ARM)
-        Extraia e execute:
-            tar -xzf RelogioVivo-linux-x64.tar.gz
-            ./RelogioVivo-linux-x64
+  mac/
+    RelogioVivo-macos-arm64.zip -> Mac Apple Silicon (M1/M2/M3/M4)
+    RelogioVivo-macos-x64.zip   -> Mac Intel
+    Descompacte e arraste o RelogioVivo.app para Aplicativos.
+    Se o Gatekeeper bloquear:
+        xattr -dr com.apple.quarantine RelogioVivo.app
 
-  portatil/macos/
-    RelogioVivo-macos-arm64.zip  -> Mac Apple Silicon (M1/M2/M3/M4)
-    RelogioVivo-macos-x64.zip    -> Mac Intel
-        Descompacte e arraste o RelogioVivo.app para Aplicativos.
-        Se o Gatekeeper bloquear:
-            xattr -dr com.apple.quarantine RelogioVivo.app
+  linux/
+    RelogioVivo-linux-x64.tar.gz   -> Linux x86_64 (Intel/AMD)
+    RelogioVivo-linux-arm64.tar.gz -> Linux ARM64 (Raspberry Pi, notebooks ARM)
+    Extraia e execute:
+        tar -xzf RelogioVivo-linux-x64.tar.gz
+        ./RelogioVivo-linux-x64
+
+Dois estilos de protetor
+------------------------
+  Nas Configurações do app você escolhe:
+    - Prévia da tela: captura a tela antes de ativar e usa a imagem desfocada
+      como fundo, com a hora e a data em um cartão que desliza.
+    - Só o relógio: não captura nada. Mostra a hora grande e a data no centro
+      sobre um fundo escuro.
 
 No Linux, o binário portátil pode não abrir em distribuições muito antigas
-(erro "GLIBC_2.xx not found"). Nesse caso use o instalador da versão setup.
+(erro "GLIBC_2.xx not found"). Nesse caso use o instalador da versão install.
 
 Se o antivírus reclamar do .exe, é um falso positivo comum de programas
 empacotados com PyInstaller. O código-fonte é aberto: você pode conferir e
@@ -163,37 +187,46 @@ def achar(nome: str, pastas: list[Path]) -> Path | None:
     return None
 
 
-def montar_zip(
+def escrever_leia_me(destino: Path, texto: str) -> None:
+    # BOM + CRLF para o Bloco de Notas do Windows abrir sem acentos quebrados.
+    destino.write_bytes(("\ufeff" + texto.replace("\n", "\r\n")).encode("utf-8"))
+
+
+def preparar_pasta(
     destino: Path,
-    pasta_interna: str,
     grupos: dict[str, list[str]],
     pastas: list[Path],
     leia_me: str,
     versao: str,
 ) -> tuple[int, list[str]]:
-    raiz_zip = f"RelogioVivo-{versao}"
-    total = 0
-    faltando: list[str] = []
+    if destino.exists():
+        shutil.rmtree(destino)
+    destino.mkdir(parents=True, exist_ok=True)
+    escrever_leia_me(destino / "LEIA-ME.txt", leia_me.format(versao=versao))
 
+    copiados = 0
+    faltando: list[str] = []
+    for sistema, nomes in grupos.items():
+        pasta_sistema = destino / sistema
+        pasta_sistema.mkdir(parents=True, exist_ok=True)
+        for padrao in nomes:
+            nome = padrao.format(v=versao)
+            origem = achar(nome, pastas)
+            if origem is None:
+                faltando.append(nome)
+                continue
+            shutil.copy2(origem, pasta_sistema / nome)
+            copiados += 1
+    return copiados, faltando
+
+
+def zipar(pasta: Path, destino: Path) -> None:
     with zipfile.ZipFile(
         destino, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
     ) as zf:
-        # BOM + CRLF para o Bloco de Notas do Windows abrir sem acentos quebrados.
-        zf.writestr(
-            f"{raiz_zip}/LEIA-ME.txt",
-            "\ufeff" + leia_me.replace("\n", "\r\n"),
-        )
-        for sistema, nomes in grupos.items():
-            for padrao in nomes:
-                nome = padrao.format(v=versao)
-                origem = achar(nome, pastas)
-                if origem is None:
-                    faltando.append(nome)
-                    continue
-                zf.write(origem, f"{raiz_zip}/{pasta_interna}/{sistema}/{nome}")
-                total += 1
-
-    return total, faltando
+        for item in sorted(pasta.rglob("*")):
+            if item.is_file():
+                zf.write(item, item.relative_to(pasta).as_posix())
 
 
 # --------------------------------------------------------------------- main
@@ -212,26 +245,29 @@ def main(argv: list[str] | None = None) -> int:
     pastas = [RAIZ / "dist", RAIZ / "artifacts", RAIZ]
     vazios = 0
 
-    for sufixo, grupos, modelo in (
-        ("setup", SETUP, LEIA_ME_SETUP),
+    for nome_zip, grupos, modelo in (
+        ("install", INSTALL, LEIA_ME_INSTALL),
         ("portatil", PORTATIL, LEIA_ME_PORTATIL),
     ):
-        destino = saida / f"RelogioVivo-{versao}-{sufixo}.zip"
-        quantidade, faltando = montar_zip(
-            destino,
-            sufixo,
-            grupos,
-            pastas,
-            modelo.format(versao=versao),
-            versao,
+        pasta = saida / nome_zip
+        copiados, faltando = preparar_pasta(
+            pasta, grupos, pastas, modelo, versao
         )
+        destino = saida / f"{nome_zip}.zip"
+        zipar(pasta, destino)
         tamanho = destino.stat().st_size / 1024 / 1024
-        print(f"{destino.name}: {quantidade} arquivos, {tamanho:.1f} MB")
+        print(f"{destino.name}: {copiados} arquivos, {tamanho:.1f} MB")
         for nome in faltando:
             print(f"  aviso: não achei {nome}", file=sys.stderr)
-        if quantidade == 0:
+        if copiados == 0:
             print(f"  erro: {destino.name} ficou vazio", file=sys.stderr)
             vazios += 1
+
+    # Limpa os ZIPs do formato antigo (RelogioVivo-<versao>-setup.zip etc.).
+    for antigo in saida.glob("RelogioVivo-*-setup.zip"):
+        antigo.unlink(missing_ok=True)
+    for antigo in saida.glob("RelogioVivo-*-portatil.zip"):
+        antigo.unlink(missing_ok=True)
 
     return 1 if vazios else 0
 

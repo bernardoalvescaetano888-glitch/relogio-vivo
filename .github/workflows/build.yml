@@ -133,6 +133,34 @@ jobs:
             dist/relogio-vivo_*_all.deb
           if-no-files-found: error
 
+  linux-arm64:
+    name: Linux ARM64 (binário + .tar.gz)
+    runs-on: ubuntu-24.04-arm
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Python, Tk e dependências de build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-venv python3-tk python3-pil
+
+      - name: Compilar
+        run: bash build_linux.sh
+
+      - name: Empacotar (preserva o chmod +x)
+        run: |
+          chmod +x dist/RelogioVivo-linux-arm64
+          cd dist
+          tar -czf RelogioVivo-linux-arm64.tar.gz RelogioVivo-linux-arm64
+          ls -lh RelogioVivo-linux-arm64*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RelogioVivo-linux-arm64
+          path: dist/RelogioVivo-linux-arm64.tar.gz
+          if-no-files-found: error
+
   macos:
     name: macOS arm64 (app + .pkg)
     runs-on: macos-latest
@@ -194,10 +222,11 @@ jobs:
 
   release:
     name: Publicar na release
-    if: startsWith(github.ref, 'refs/tags/')
-    # windows-arm64 fica de fora do needs de propósito: se o runner ARM do
-    # GitHub não estiver disponível, a release não deve ser bloqueada.
-    needs: [windows, linux, macos, macos-intel]
+    if: startsWith(github.ref, 'refs/tags/') && always()
+    # needs completo para os ZIPs saírem completos. O always() evita que a
+    # release seja cancelada se um runner ARM não estiver disponível; nesse
+    # caso os ZIPs são refeitos localmente e enviados com --clobber.
+    needs: [windows, windows-arm64, linux, linux-arm64, macos, macos-intel]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -206,23 +235,13 @@ jobs:
         with:
           path: artifacts
 
-      - name: Montar os ZIPs (setup e portátil)
+      - name: Montar os ZIPs (install e portátil)
         run: python3 installer/make_bundle.py
 
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            instalar.sh
-            dist/RelogioVivo-*-setup.zip
-            dist/RelogioVivo-*-portatil.zip
-            artifacts/**/RelogioVivo-Setup-*.exe
-            artifacts/**/RelogioVivo-Setup-*.pkg
-            artifacts/**/relogio-vivo_*_all.deb
-            artifacts/RelogioVivo-win-x64/RelogioVivo-win-x64.exe
-            artifacts/RelogioVivo-win-arm64/RelogioVivo-win-arm64.exe
-            artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-*.tar.gz
-            artifacts/RelogioVivo-linux-x64/RelogioVivo-linux-x64
-            artifacts/RelogioVivo-macos-arm64/RelogioVivo-macos-arm64.zip
-            artifacts/RelogioVivo-macos-x64/RelogioVivo-macos-x64.zip
-          fail_on_unmatched_files: false
+            dist/install.zip
+            dist/portatil.zip
+          fail_on_unmatched_files: true
