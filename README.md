@@ -273,12 +273,13 @@ binário. Por isso existem três scripts, um para cada plataforma.
 
 ### Baixar pronto
 
-Todos os binários estão em `dist/` e publicados em
-<https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/latest>.
+Todos os binários são gerados em `dist/` e publicados nos **dois ZIPs** da
+release: <https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/latest>
+(`install.zip` para instaladores, `portatil.zip` para as versões sem instalação).
 No Linux, prefira o **instalador** acima; o `.tar.gz` já vem com o bit de
-execução certo (o GitHub perde o `chmod +x` de arquivos soltos).
+execução certo.
 
-| Sistema | Arquivo | Observação |
+| Sistema | Arquivo (dentro do ZIP) | Observação |
 |---|---|---|
 | Windows 10/11 Intel ou AMD | `RelogioVivo-Setup-*-win-x64.exe` | **instalador completo** |
 | Windows ARM (Snapdragon) | `RelogioVivo-Setup-*-win-arm64.exe` | instalador nativo |
