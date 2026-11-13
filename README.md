@@ -399,3 +399,11 @@ Tudo em `relogio_vivo.py`:
 - `RelogioVivo` (ciclo de inatividade, instância única e pedidos);
 - `CliReport` / `show_text_dialog` (saída da CLI em janela, para o build sem console);
 - CLI e diagnóstico.
+
+Os instaladores ficam em `installer/`:
+
+- `installer/windows/relogio-vivo.iss` — script do Inno Setup;
+- `installer/windows/build_setup.ps1` — gera os `Setup .exe`;
+- `installer/linux/build_deb.sh` — gera o `.deb`;
+- `installer/macos/build_pkg.sh` — gera o `.pkg` (e `.dmg` opcional);
+- `installer/README.md` — o que cada um instala e como publicar.
