@@ -1,6 +1,7 @@
 # Build do PyInstaller
 build/
 dist/
+artifacts/
 *.spec
 build-*.log
 
