@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relógio Vivo — protetor de tela bonito e grátis para Windows, Linux e macOS</title>
+<meta name="description" content="Relógio Vivo: protetor de tela em Python + Tkinter que mostra a hora e a data ao vivo sobre a sua tela desfocada. Grátis para Windows, Linux e macOS.">
+<meta name="keywords" content="relógio vivo, protetor de tela, screensaver, screensaver windows, screensaver linux, screensaver mac, python tkinter, relógio protetor de tela">
+<meta property="og:title" content="Relógio Vivo — Protetor de tela com hora e data ao vivo">
+<meta property="og:description" content="Baixe grátis: protetor de tela para Windows, Linux e macOS com dois estilos e instalação sem terminal.">
+<meta property="og:image" content="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<style>
+  :root { --bg:#0b1020; --card:#141b33; --text:#e8ecff; --muted:#9aa5cf; --accent:#4f7cff; --accent2:#8f5cff; --green:#22c55e; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,sans-serif; background:radial-gradient(1200px 600px at 70% -10%, #1c2a5e 0%, var(--bg) 55%); color:var(--text); min-height:100vh; }
+  a { color:inherit; }
+  .wrap { max-width:960px; margin:0 auto; padding:24px; }
+  header { display:flex; align-items:center; gap:16px; padding:32px 0 8px; }
+  header img { width:72px; height:72px; border-radius:16px; box-shadow:0 8px 30px rgba(79,124,255,.35); }
+  h1 { font-size:2rem; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { color:var(--muted); margin-top:4px; }
+  .badge { display:inline-block; background:#1d2c5c; color:#9db8ff; border:1px solid #2d4080; border-radius:999px; padding:4px 12px; font-size:.8rem; margin:12px 8px 0 0; }
+  .hero { text-align:center; padding:32px 0 8px; }
+  .hero p { color:var(--muted); max-width:640px; margin:12px auto 0; line-height:1.6; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin:32px 0; }
+  .card { background:var(--card); border:1px solid #232e57; border-radius:16px; padding:20px; }
+  .card h3 { margin-bottom:8px; }
+  .card ol { margin-left:18px; color:var(--muted); line-height:1.7; }
+  .btns { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin:8px 0 32px; }
+  .btn { display:inline-flex; align-items:center; gap:10px; padding:14px 22px; border-radius:12px; font-weight:700; text-decoration:none; transition:transform .12s ease, box-shadow .12s ease; }
+  .btn:hover { transform:translateY(-2px); }
+  .btn-primary { background:linear-gradient(90deg,var(--accent),var(--accent2)); color:#fff; box-shadow:0 8px 24px rgba(79,124,255,.4); }
+  .btn-ghost { background:var(--card); border:1px solid #2d4080; color:#cdd7ff; }
+  .donate { background:var(--card); border:1px solid #232e57; border-radius:20px; padding:28px; text-align:center; margin:8px 0 32px; }
+  .donate img { width:220px; height:220px; border-radius:12px; background:#fff; padding:10px; margin:16px 0 8px; }
+  .donate .valor { font-size:1.6rem; font-weight:800; color:var(--green); }
+  .donate p { color:var(--muted); line-height:1.6; margin-top:8px; }
+  .honesto { background:rgba(34,197,94,.12); border:1px dashed var(--green); color:#b6f0cd; border-radius:12px; padding:12px; margin-top:14px; font-size:.95rem; }
+  .copia { margin-top:14px; }
+  .copia code { display:block; background:#0a0f22; border:1px solid #2d4080; border-radius:8px; padding:10px; font-size:.72rem; word-break:break-all; color:#9db8ff; }
+  .copia button { margin-top:10px; background:var(--green); border:none; color:#06210f; font-weight:800; padding:10px 18px; border-radius:10px; cursor:pointer; }
+  .copiado { color:var(--green); font-size:.85rem; margin-top:6px; min-height:1.2em; }
+  footer { text-align:center; color:var(--muted); padding:16px 0 40px; font-size:.85rem; }
+  footer a { color:#9db8ff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img src="icon.png" alt="Ícone do Relógio Vivo">
+    <div>
+      <h1>Relógio Vivo</h1>
+      <div class="tag">Protetor de tela com hora e data ao vivo — Windows, Linux e macOS</div>
+      <div>
+        <span class="badge">v1.3.1</span>
+        <span class="badge">Grátis</span>
+        <span class="badge">Sem terminal</span>
+        <span class="badge">Código aberto</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="hero">
+    <p>Depois de alguns minutos sem mexer no teclado ou no mouse, o Relógio Vivo
+    aparece na tela com a <strong>hora ao vivo</strong> e a <strong>data em português</strong>,
+    deslizando suavemente no centro. Sai com qualquer tecla, clique ou movimento do mouse.
+    Instala sozinho, cria atalhos e pode iniciar junto com o computador.</p>
+  </div>
+
+  <div class="btns">
+    <a class="btn btn-primary" href="https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/download/v1.3.1/install.zip" download>⬇️ Baixar instaladores (ZIP)</a>
+    <a class="btn btn-ghost" href="https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases/download/v1.3.1/portatil.zip" download>📦 Versão portátil (sem instalar)</a>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <h3>🖼️ Estilo Prévia da tela</h3>
+      <ol>
+        <li>Captura a tela</li>
+        <li>Usa a captura desfocada e escurecida como fundo</li>
+        <li>Monta um cartão com a hora e a data</li>
+        <li>Faz o cartão deslizar no centro</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>🕒 Estilo Só o relógio</h3>
+      <ol>
+        <li>Não captura a tela (sem permissão de gravação)</li>
+        <li>Fundo escuro em degradê</li>
+        <li>Hora grande com leve flutuação</li>
+        <li>Funciona igual no Windows, Linux e macOS</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="donate">
+    <div class="valor">💚 Apoie o projeto — R$ 10</div>
+    <p>O <strong>download é 100% grátis</strong> e vai continuar assim para sempre.<br>
+    Mas se você gostou do app, você pode pagar R$ 10 no Pix pra ajudar o criador.</p>
+    <img src="pix10.png" alt="QR Code Pix de 10 reais">
+    <p>Aponte a câmera do app do seu banco para o QR acima,<br>ou use o copia e cola:</p>
+    <div class="copia">
+      <code id="pixpayload">00020126560014BR.GOV.BCB.PIX0134bernardoalvescaetano2015@gmail.com520400005303986540510.005802BR5918BERNARDO A CAETANO6006BRASIL62070503***63040C59</code>
+      <button onclick="copiar()">📋 Copiar código Pix</button>
+      <div class="copiado" id="copiado"></div>
+    </div>
+    <div class="honesto">
+      😉 <strong>Esse pagamento é pela honra:</strong> o app já está liberado e você já baixou.<br>
+      Se puder, pague — cada R$ 10 ajuda a continuar criando coisas novas!
+    </div>
+  </div>
+
+  <footer>
+    Feito por <strong>Bernardo</strong> •
+    <a href="https://github.com/bernardoalvescaetano888-glitch/relogio-vivo">Código-fonte no GitHub</a> •
+    <a href="https://github.com/bernardoalvescaetano888-glitch/relogio-vivo/releases">Todas as versões</a>
+  </footer>
+
+</div>
+<script>
+function copiar() {
+  const c = document.getElementById('pixpayload').textContent;
+  navigator.clipboard.writeText(c).then(() => {
+    document.getElementById('copiado').textContent = '✅ Código Pix copiado! Cole no seu app de banco.';
+    setTimeout(() => document.getElementById('copiado').textContent = '', 4000);
+  }).catch(() => {
+    document.getElementById('copiado').textContent = 'Selecione o código acima e copie manualmente.';
+  });
+}
+</script>
+</body>
+</html>
